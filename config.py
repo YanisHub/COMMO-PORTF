@@ -89,6 +89,31 @@ directly against the CSVs before wiring them up:
   2017-03 — 9+ years stale — so it's offered in the same selector purely
   as a labeled historical curiosity, never defaulted to, with an explicit
   staleness caveat if picked.
+
+REVISION 2026-07-06 -- page 5 (Freight Overlay) tickers, checked directly
+against the CSVs before wiring them up:
+
+- `BCI14`/`BSI`/`BHSI`/`BIDY`/`BITY` (the four additional Baltic vessel-
+  class indices beyond `BDIY`) are all natively **monthly** (month-end
+  prints) in this dataset, not "daily, gaps" as the brief assumed -- the
+  same finding as every prior page. `USDZAR`/`USDIDR` (added for page 5's
+  optional exporter-FX context) are monthly too.
+- `BCI14` (Capesize) genuinely only starts 2014-04 in this dataset --
+  shorter history than the other Baltic series, but comfortably covers
+  the page's default 3Y window.
+- `BSI` (Supramax) is the domain-correct PRIMARY freight proxy for
+  concentrate/spodumene per the vessel->commodity map (see
+  `VESSEL_COMMODITY_MAP` below) -- but it stops 2017-03 in this dataset,
+  9+ years before the one real dollar-freight series this app can check
+  it against (`L4CNSPAU - LCBMAUSF`, which only exists 2023-09 onward).
+  The two series have **zero temporal overlap** -- BSI cannot actually be
+  validated in this dataset, full stop, regardless of what the brief
+  assumes. `BHSI` (Handysize), the map's secondary conc/spod proxy, is
+  current through 2026-06 and is used as the PRACTICAL default proxy on
+  page 5 instead -- BSI remains selectable for domain-reference/historical
+  context with an explicit staleness+no-overlap warning. See
+  `FREIGHT_DATA_CAVEATS` and page 5's S3 for the (weak/inconclusive, all
+  correlations shown as-observed) proxy-validation result against `BHSI`.
 """
 
 from pathlib import Path
@@ -481,6 +506,67 @@ TICKERS = {
         "factor": 1.0,
         "freq": "M",
     },
+    # -----------------------------------------------------------------
+    # Page 5 — Freight Overlay
+    # `BDIY`/`BSI` already registered above (page 2). The four remaining
+    # Baltic vessel-class indices + the two exporter-FX pairs below are
+    # all verified MONTHLY in this dataset — see REVISION 2026-07-06 note
+    # at the top of this file. NONE of these are converted to $/t: Baltic
+    # indices are unitless index points, kept as points end-to-end (see
+    # utils.finance's page-5 section and Instructions_FREIGHT.md).
+    # -----------------------------------------------------------------
+    "BCI14": {
+        "file": "BCI14 Index.csv",
+        "desc": "Baltic Capesize Index (iron ore/coal, large dry-bulk) — CONTEXT only, not "
+                "the conc/spod proxy; starts 2014-04 in this dataset",
+        "unit": "index",
+        "kind": "usd_t",  # pass-through, factor=1 — index points, never $/t
+        "factor": 1.0,
+        "freq": "M",
+    },
+    "BHSI": {
+        "file": "BHSI Index.csv",
+        "desc": "Baltic Handysize Index (smaller conc/spodumene parcels, minor bulk) — "
+                "practical default conc/spod freight proxy on page 5 (Supramax/BSI is stale)",
+        "unit": "index",
+        "kind": "usd_t",
+        "factor": 1.0,
+        "freq": "M",
+    },
+    "BIDY": {
+        "file": "BIDY Index.csv",
+        "desc": "Baltic Dirty Tanker Index (crude) — context only, no crude-oil page in this app",
+        "unit": "index",
+        "kind": "usd_t",
+        "factor": 1.0,
+        "freq": "M",
+    },
+    "BITY": {
+        "file": "BITY Index.csv",
+        "desc": "Baltic Clean Tanker Index (refined products) — context only, no "
+                "refined-products page in this app",
+        "unit": "index",
+        "kind": "usd_t",
+        "factor": 1.0,
+        "freq": "M",
+    },
+    "USDZAR": {
+        "file": "USDZAR Curncy.csv",
+        "desc": "USD/ZAR spot (optional macro/exporter-FX context — South Africa dry-bulk "
+                "exports)",
+        "unit": "ZAR per USD",
+        "kind": "fx",
+        "factor": 1.0,
+        "freq": "M",
+    },
+    "USDIDR": {
+        "file": "USDIDR Curncy.csv",
+        "desc": "USD/IDR spot (optional macro/exporter-FX context — Indonesia dry-bulk exports)",
+        "unit": "IDR per USD",
+        "kind": "fx",
+        "factor": 1.0,
+        "freq": "M",
+    },
 }
 
 # Tickers verified on the terminal to be broken/unusable/stale and dropped
@@ -593,4 +679,85 @@ ZINC_DATA_CAVEATS = {
     "ZNCNMQKY": "confirmed a genuine USD/t physical premium (B/L basis), not "
         "a CNY/t cathode price — shown as regional context (S8) only, never "
         "folded into the TC/margin core.",
+}
+
+# ---------------------------------------------------------------------------
+# Page 5 — Freight Overlay
+# ---------------------------------------------------------------------------
+# Vessel class -> commodity map (domain-knowledge core of page 5). `BDIY`
+# (Baltic Dry Index) is the dry-bulk COMPOSITE across all vessel classes —
+# shown as the headline "overall dry-bulk regime" signal, not itself tied to
+# one commodity. The five entries below are the individual vessel classes.
+# Getting Supramax/Handysize (not Capesize) right as the conc/spodumene proxy
+# is the single most important domain fact on this page — Capesize is big
+# iron-ore/coal bulk, a completely different physical trade lane.
+VESSEL_COMMODITY_MAP = {
+    "BCI14": {
+        "vessel": "Capesize",
+        "commodity": "Iron ore, coal, large dry-bulk cargoes",
+        "role": "Context only — macro bulk-demand signal. NOT the conc/spodumene proxy "
+                "despite being the largest, most-watched Baltic sub-index.",
+        "pages": [],
+    },
+    "BSI": {
+        "vessel": "Supramax",
+        "commodity": "Base-metal concentrates (Cu, Zn), spodumene, minor bulk",
+        "role": "PRIMARY freight proxy for pages 1 (Cu), 2 (Li spodumene), 4 (Zn conc) per "
+                "the vessel map — but STALE in this dataset (ends 2017-03, 9+ years stale, "
+                "zero overlap with the real freight-validation series). Handysize (BHSI) is "
+                "used as the practical default instead; see FREIGHT_DATA_CAVEATS.",
+        "pages": ["1_Copper_East_West", "2_Lithium_Conversion_Margin", "4_Zinc_Smelter_Margin"],
+    },
+    "BHSI": {
+        "vessel": "Handysize",
+        "commodity": "Smaller concentrate/spodumene parcels, minor bulk",
+        "role": "Secondary conc/spodumene proxy per the vessel map — used as the PRACTICAL "
+                "default proxy on this page since it is current (through 2026-06) where "
+                "Supramax (BSI) is not.",
+        "pages": ["1_Copper_East_West", "2_Lithium_Conversion_Margin", "4_Zinc_Smelter_Margin"],
+    },
+    "BIDY": {
+        "vessel": "Dirty tanker",
+        "commodity": "Crude oil",
+        "role": "Context only — no crude-oil page in this app.",
+        "pages": [],
+    },
+    "BITY": {
+        "vessel": "Clean tanker",
+        "commodity": "Refined products",
+        "role": "Context only — no refined-products page in this app.",
+        "pages": [],
+    },
+}
+
+# Regime transform defaults (utils.finance.freight_regime). Window is in
+# PERIODS of whatever frequency the input series actually is — every Baltic
+# series here is verified monthly (see REVISION note), so the default of 36
+# periods = 3Y, matching every other page's default chart window.
+FREIGHT_REGIME_WINDOW_DEFAULT = 36
+FREIGHT_LOW_PCT = 25.0
+FREIGHT_HIGH_PCT = 75.0
+
+# Data caveats specific to page 5 (Freight Overlay), surfaced in-app so
+# nobody mistakes a Baltic index point for a dollar freight rate, or treats
+# a stale series as current. See the REVISION 2026-07-06 note above.
+FREIGHT_DATA_CAVEATS = {
+    "BDIY/BCI14/BSI/BHSI/BIDY/BITY": "verified MONTHLY (month-end prints) in this dataset, "
+        "not \"daily, gaps\" as the initial brief assumed — same finding as every prior page. "
+        "The regime window, S3 lead-lag, and scaler are all in months, not weeks.",
+    "BSI": "genuinely stops 2017-03 in this dataset (9+ years stale) — despite being the "
+        "domain-correct PRIMARY conc/spodumene proxy per the vessel map, it has ZERO temporal "
+        "overlap with the one real dollar-freight series this app can validate it against "
+        "(L4CNSPAU - LCBMAUSF, which only starts 2023-09). Handysize (BHSI, current through "
+        "2026-06) is used as the practical default proxy instead; BSI remains selectable for "
+        "domain/historical reference with an explicit staleness warning.",
+    "BCI14": "starts 2014-04 in this dataset (Capesize) — shorter history than the other "
+        "Baltic series but comfortably covers the page's default 3Y window.",
+    "Index points (all six Baltic series)": "unitless INDEX POINTS, not USD/t on any named "
+        "route — no Cape C5 / Panamax route USD/t series exists in this dataset. Never "
+        "converted to a dollar figure. Freight enters the app as (a) a regime signal "
+        "(rolling percentile/z-score) and (b) a unitless SCALER applied to the existing "
+        "USD/t freight sliders already in pages 1/2/4. The one real dollar freight series in "
+        "this app is the Li CIF-FOB spread (L4CNSPAU - LCBMAUSF) — used here to validate the "
+        "Baltic proxy, never fabricated the other way around.",
 }

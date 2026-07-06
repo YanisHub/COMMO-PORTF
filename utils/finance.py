@@ -627,6 +627,124 @@ def zinc_margin_sensitivity_grid(
     return pd.DataFrame(margin_matrix, index=acid_credit_range, columns=tc_per_dmt_range)
 
 
+# ---------------------------------------------------------------------------
+# Page 5 — Freight Overlay (reusable: importable by pages 1/2/4 for a small
+# freight-regime badge — see each page's S1 header).
+#
+# Baltic indices are unitless INDEX POINTS, not USD/t on any named route —
+# no Cape C5/Panamax route USD/t series exists in this dataset (see
+# Instructions_FREIGHT.md "SCOPE HONESTY" and config.FREIGHT_DATA_CAVEATS).
+# Freight therefore enters the rest of the app two ways, both below: (a) a
+# REGIME signal (`freight_regime`, rolling percentile + z-score, still in
+# index points) and (b) a unitless SCALER (`freight_scaler`) applied to the
+# existing USD/t freight sliders already in pages 1/2/4 — a dollar figure
+# only ever re-enters via `freight_adjusted_cost`, which scales an existing
+# slider assumption, never fabricates a new one.
+# ---------------------------------------------------------------------------
+def freight_regime(
+    index: pd.Series,
+    window: int = config.FREIGHT_REGIME_WINDOW_DEFAULT,
+    low_pct: float = config.FREIGHT_LOW_PCT,
+    high_pct: float = config.FREIGHT_HIGH_PCT,
+) -> pd.DataFrame:
+    """Rolling trailing-window percentile + z-score regime transform for a
+    Baltic (or any) index-points series.
+
+    `pctile` is the rank of the LATEST observation within its own trailing
+    `window` periods (not a whole-sample percentile) — "how rich/cheap is
+    freight right now relative to its recent history," which is what a desk
+    means by a freight regime, and which stays meaningful even across a
+    series whose underlying index base/methodology has shifted over its
+    multi-decade history (a trailing window never compares today against a
+    1990s base level).
+
+    Returns a DataFrame (index = `index`'s dropna'd dates) with columns:
+    value, pctile (0-100), zscore, regime (LOW / NORMAL / HIGH / UNKNOWN).
+    LOW = pctile < low_pct, HIGH = pctile > high_pct, else NORMAL; UNKNOWN
+    wherever the trailing window doesn't yet have enough observations.
+    """
+    s = index.dropna()
+    if s.empty:
+        return pd.DataFrame(columns=["value", "pctile", "zscore", "regime"])
+    min_periods = max(6, window // 3)
+
+    def _trailing_pctile(arr: np.ndarray) -> float:
+        last = arr[-1]
+        return 100.0 * (arr <= last).sum() / len(arr)
+
+    pctile = s.rolling(window, min_periods=min_periods).apply(_trailing_pctile, raw=True)
+    roll_mean = s.rolling(window, min_periods=min_periods).mean()
+    roll_std = s.rolling(window, min_periods=min_periods).std()
+    zscore = (s - roll_mean) / roll_std
+
+    regime = pd.Series(np.where(pctile.isna(), "UNKNOWN", "NORMAL"), index=s.index)
+    regime[pctile < low_pct] = "LOW"
+    regime[pctile > high_pct] = "HIGH"
+
+    return pd.DataFrame({"value": s, "pctile": pctile, "zscore": zscore, "regime": regime})
+
+
+FREIGHT_REGIME_BADGE_ICON = {"LOW": "🟢 LOW", "NORMAL": "🟡 NORMAL", "HIGH": "🔴 HIGH", "UNKNOWN": "⚪ UNKNOWN"}
+
+
+def freight_regime_badge(regime: str | None) -> str:
+    """Icon-prefixed label for a `freight_regime()` regime string — shared
+    across page 5's own KPI row and the small back-integrated badge on
+    pages 1/2/4, so the LOW/NORMAL/HIGH vocabulary and colors stay
+    identical everywhere it appears."""
+    return FREIGHT_REGIME_BADGE_ICON.get(regime, FREIGHT_REGIME_BADGE_ICON["UNKNOWN"])
+
+
+def freight_baseline(
+    index: pd.Series,
+    mode: str = "rolling",
+    window: int = config.FREIGHT_REGIME_WINDOW_DEFAULT,
+    ref_date: pd.Timestamp | None = None,
+) -> pd.Series | float:
+    """Baseline level for `freight_scaler`, in one of two user-selectable
+    modes (sidebar selector on page 5):
+
+    - `mode="rolling"` (default): trailing rolling mean, `window` periods —
+      the baseline itself drifts with the prevailing regime over time.
+    - `mode="fixed"`: the single index level observed on/before `ref_date` —
+      holds one reference level flat, for "freight vs a specific known
+      period" comparisons instead of a moving baseline.
+
+    Returns NaN (fixed mode, no data on/before ref_date) rather than raising —
+    callers already guard on empty/NaN series throughout this app.
+    """
+    s = index.dropna()
+    if mode == "fixed":
+        if ref_date is None or s.empty:
+            return float("nan")
+        eligible = s.loc[s.index <= pd.Timestamp(ref_date)]
+        return float(eligible.iloc[-1]) if not eligible.empty else float("nan")
+    min_periods = max(6, window // 3)
+    return s.rolling(window, min_periods=min_periods).mean()
+
+
+def freight_scaler(index: pd.Series, baseline: pd.Series | float) -> pd.Series:
+    """freight_scaler = index / baseline — unitless, computed entirely on
+    the Baltic index's OWN history (never mixed with a dollar figure here).
+    `baseline` is either a rolling-mean series (`freight_baseline` above,
+    reindexed onto `index`'s dates) or a single fixed reference level. A
+    zero/NaN baseline yields NaN at that point, not a division error.
+    """
+    s = index.dropna()
+    b = baseline.reindex(s.index) if isinstance(baseline, pd.Series) else pd.Series(baseline, index=s.index)
+    return (s / b.replace(0, np.nan)).rename("freight_scaler")
+
+
+def freight_adjusted_cost(base_freight_usd_t: float, scaler: pd.Series) -> pd.Series:
+    """freight_$t_adj = base_freight_$t x freight_scaler — the ONLY point a
+    dollar figure re-enters the freight-regime logic. `base_freight_usd_t`
+    is an EXISTING $/t slider default already in pages 1/2/4 (not a new
+    fabricated per-route dollar freight); this just modulates it by the
+    unitless Baltic regime multiplier computed above.
+    """
+    return (scaler * base_freight_usd_t).rename("freight_adj_usd_t")
+
+
 def consecutive_below(series: pd.Series, threshold: float, n: int) -> pd.Series:
     """Boolean series, same index as `series`: True at every point that is
     part of a run of >= n consecutive observations strictly below

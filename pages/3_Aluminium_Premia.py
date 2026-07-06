@@ -276,7 +276,7 @@ if require(converted, ["AUP1", "AMEUDDP"], "S2"):
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.1),
     )
-    st.plotly_chart(fig_prem, use_container_width=True)
+    st.plotly_chart(fig_prem, width='stretch')
 
     if not df.empty:
         spread = clip(df["mwp"] - df["rotterdam"])
@@ -286,7 +286,7 @@ if require(converted, ["AUP1", "AMEUDDP"], "S2"):
             title="MWP − Rotterdam spread (USD/t) — Rotterdam forward-filled onto the daily MWP grid",
             yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig_spread, use_container_width=True)
+        st.plotly_chart(fig_spread, width='stretch')
 
     if show_fx_context and require(converted, ["DXY"], "S2 (DXY/EURUSD context)"):
         dxy = clip(converted["DXY"])
@@ -295,7 +295,7 @@ if require(converted, ["AUP1", "AMEUDDP"], "S2"):
             title="US Dollar Index (macro context only — not used in FV/carry calc)",
             yaxis_title="index", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig_fx, use_container_width=True)
+        st.plotly_chart(fig_fx, width='stretch')
         st.caption(
             "USD-priced aluminium is costlier in local-currency terms for non-US buyers when "
             "the dollar is strong, which can dampen regional demand at the margin — a "
@@ -330,7 +330,7 @@ if not df.empty and require(converted, ["AMEUDDP"], "S3"):
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.1),
     )
-    st.plotly_chart(fig_fv, use_container_width=True)
+    st.plotly_chart(fig_fv, width='stretch')
 
     richness = ufin.premium_richness(converted["AMEUDDP"], udata.resample_monthly(df["fv_premium"], how="last"))
     richness_clipped = clip(richness)
@@ -343,7 +343,7 @@ if not df.empty and require(converted, ["AMEUDDP"], "S3"):
             title="premium_richness = Rotterdam actual − FV_premium (shaded green=RICH, salmon=CHEAP)",
             yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig_rich, use_container_width=True)
+        st.plotly_chart(fig_rich, width='stretch')
 
         latest_rich = richness_clipped.dropna()
         if not latest_rich.empty:
@@ -375,7 +375,7 @@ if not df.empty:
         title=f"Carry P&L, {carry_days}d horizon (shaded = PROFITABLE-CARRY)",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_carry, use_container_width=True)
+    st.plotly_chart(fig_carry, width='stretch')
 
     st.subheader("Waterfall — carry P&L breakdown on a selected date")
     wf_date_input = st.slider(
@@ -400,7 +400,7 @@ if not df.empty:
             title=f"Carry P&L waterfall, snapshot {snap_date.date()} (USD/t)",
             yaxis_title="USD/t",
         )
-        st.plotly_chart(fig_wf, use_container_width=True)
+        st.plotly_chart(fig_wf, width='stretch')
         st.caption(
             f"Snapshot: contango ${row['contango']:,.0f}/t − financing ${row['financing_cost']:,.0f}/t "
             f"− rent ${warehouse_rent_value:,.0f}/t = net ${row['carry_pnl']:,.0f}/t "
@@ -436,7 +436,7 @@ if not df.empty:
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.1),
     )
-    st.plotly_chart(fig_term, use_container_width=True)
+    st.plotly_chart(fig_term, width='stretch')
 
     breakeven_c = clip(df["breakeven_contango"])
     fig_breakeven = go.Figure()
@@ -448,7 +448,7 @@ if not df.empty:
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.1),
     )
-    st.plotly_chart(fig_breakeven, use_container_width=True)
+    st.plotly_chart(fig_breakeven, width='stretch')
 
 st.divider()
 
@@ -484,7 +484,7 @@ if show_iai:
             yaxis_title="t/month", xaxis_title="date", hovermode="x unified",
             yaxis2=dict(title="YoY change (%)", overlaying="y", side="right"),
         )
-        st.plotly_chart(fig_iai, use_container_width=True)
+        st.plotly_chart(fig_iai, width='stretch')
 
         available_regions = [tk for tk in IAI_REGIONAL if tk in converted and not converted[tk].dropna().empty]
         if available_regions:
@@ -497,7 +497,7 @@ if show_iai:
                 yaxis_title="t/month", xaxis_title="date", hovermode="x unified",
                 legend=dict(orientation="h", y=1.1),
             )
-            st.plotly_chart(fig_regional, use_container_width=True)
+            st.plotly_chart(fig_regional, width='stretch')
 else:
     st.caption("Toggle **'Show IAI production context'** in the sidebar to render this section.")
 

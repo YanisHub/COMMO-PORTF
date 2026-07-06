@@ -34,6 +34,7 @@ st.set_page_config(page_title="Zinc Smelter Margin", layout="wide")
 
 ALL_TICKERS = [
     "Z1CNHCOF", "Z1CNTCIM", "LMZSDS03", "ZNCNMQKY", "USDRUB", "USDTRY", "DXY",
+    "BHSI",  # optional freight-regime badge (page 5 back-integration), unused in any calc here
 ]
 
 
@@ -281,7 +282,7 @@ if require(converted, [tc_choice, "LMZSDS03"], "S1/S2/S3/S5/S6/S7 (core margin c
         conv_cost=conv_cost,
     )
 
-kpi_cols = st.columns(5)
+kpi_cols = st.columns(6)
 tc_latest = converted.get(tc_choice, pd.Series(dtype=float)).dropna()
 lme_latest = converted.get("LMZSDS03", pd.Series(dtype=float)).dropna()
 kpi_cols[0].metric(
@@ -311,6 +312,21 @@ else:
     regime = "UNKNOWN"
 badge_color = {"HEALTHY": "🟢", "UNDERWATER": "🔴", "BREAKEVEN": "🟡", "UNKNOWN": "⚪"}[regime]
 kpi_cols[4].metric("Regime", f"{badge_color} {regime}")
+
+# --- optional freight-regime badge (page 5 back-integration) ---------------
+# Handysize (BHSI), not Supramax (BSI) — BSI is stale in this dataset (ends
+# 2017-03); see config.FREIGHT_DATA_CAVEATS and page 5 for the full writeup.
+# Import-only, degrades to "n/a" if BHSI is missing — no calc above depends on it.
+freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted and not converted["BHSI"].dropna().empty else None
+if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
+    frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
+    kpi_cols[5].metric(
+        "Freight regime (Handysize, ctx)", ufin.freight_regime_badge(frow["regime"]),
+        f"{frow['pctile']:.0f}th pctile", delta_color="off",
+        help="Baltic Handysize (BHSI) freight regime — context only, not used in the smelter-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
+    )
+else:
+    kpi_cols[5].metric("Freight regime (Handysize, ctx)", "n/a")
 
 st.divider()
 
@@ -345,7 +361,7 @@ if not margin_df.empty:
         yaxis2=dict(title="LME zinc 3M (USD/t)", overlaying="y", side="right"),
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_tc, use_container_width=True)
+    st.plotly_chart(fig_tc, width='stretch')
 
     latest_tc = mdf["tc_per_dmt"].dropna()
     if not latest_tc.empty and latest_tc.iloc[-1] <= 0:
@@ -382,7 +398,7 @@ if not margin_df.empty:
         yaxis_title="USD/t zinc", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.12),
     )
-    st.plotly_chart(fig_stack, use_container_width=True)
+    st.plotly_chart(fig_stack, width='stretch')
 
     st.subheader("Waterfall — margin breakdown on a selected date")
     wf_date_input = st.slider(
@@ -409,7 +425,7 @@ if not margin_df.empty:
             title=f"Margin waterfall, snapshot {snap_date.date()} (USD/t zinc, {tc_choice} benchmark)",
             yaxis_title="USD/t zinc",
         )
-        st.plotly_chart(fig_wf, use_container_width=True)
+        st.plotly_chart(fig_wf, width='stretch')
         st.caption(
             f"Snapshot: TC/t-zinc ${row['tc_per_t_zinc']:,.0f} + free metal ${row['free_metal']:,.0f} "
             f"+ by-product credit ${row['by_product_credit']:,.0f} - conv. cost ${row['conv_cost']:,.0f} "
@@ -453,7 +469,7 @@ if require(converted, [tc_choice], "S4"):
         yaxis_title="USD/dmt conc", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_bench, use_container_width=True)
+    st.plotly_chart(fig_bench, width='stretch')
 
     fig_spread = go.Figure(go.Scatter(x=df4c.index, y=df4c["spot_vs_bench"], name="spot - bench_proxy (USD/dmt)", line=dict(color="#8c564b"), fill="tozeroy"))
     fig_spread.add_hline(y=0, line_dash="dot", line_color="gray")
@@ -462,7 +478,7 @@ if require(converted, [tc_choice], "S4"):
         title="Spot minus benchmark-proxy TC (shaded = spot below benchmark, acute tightness)",
         yaxis_title="USD/dmt conc", xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_spread, use_container_width=True)
+    st.plotly_chart(fig_spread, width='stretch')
 
 st.divider()
 
@@ -500,7 +516,7 @@ if not margin_df.empty:
             yaxis_title="index (100 = window start)", xaxis_title="date", hovermode="x unified",
             legend=dict(orientation="h", y=1.08),
         )
-        st.plotly_chart(fig_dual, use_container_width=True)
+        st.plotly_chart(fig_dual, width='stretch')
 
         corr = dual["trader_pnl"].corr(dual["smelter_margin"])
         st.metric(
@@ -546,7 +562,7 @@ if not margin_df.empty:
             title=f"Curtailment-risk regime: margin < $0/t for >= {curtailment_n} consecutive months (shaded)",
             yaxis_title="USD/t zinc", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig6, use_container_width=True)
+        st.plotly_chart(fig6, width='stretch')
 
         latest_flag = curtailment_flag.dropna()
         if not latest_flag.empty and bool(latest_flag.iloc[-1]):
@@ -602,7 +618,7 @@ if not margin_df.empty and not tc_latest.empty:
     fig_heat.update_layout(
         title=f"Margin sensitivity: TC x acid credit (free metal + conv. cost held at current sidebar values, {tc_choice})",
     )
-    st.plotly_chart(fig_heat, use_container_width=True)
+    st.plotly_chart(fig_heat, width='stretch')
 
     breakeven_acid_now = conv_cost - free_metal_snapshot - (tc_center / ufin.zinc_per_dmt_conc(grade, recovery))
     st.metric(
@@ -641,7 +657,7 @@ if require(converted, ["ZNCNMQKY"], "S8"):
         yaxis_title="Premium (USD/t)", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig8, use_container_width=True)
+    st.plotly_chart(fig8, width='stretch')
 else:
     st.caption("ZNCNMQKY unavailable — S8 degraded gracefully, rest of the page unaffected.")
 

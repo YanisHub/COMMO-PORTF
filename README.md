@@ -12,8 +12,11 @@ carry-component fair value, and the classic 2009-14 warehouse
 cash-and-carry trade. Page 4 is the **Zinc Smelter Margin** monitor —
 concentrate TC converted into a China custom-smelter margin cycle, the
 mirror trader/smelter P&L off one TC series, a curtailment-risk signal,
-and an acid-credit sensitivity check. Page 5 (Freight) will reuse
-`utils/data.py` and `utils/finance.py`.
+and an acid-credit sensitivity check. Page 5 is the **Freight Overlay**
+monitor — Baltic vessel-class indices as a cross-basin freight regime
+signal + a scaler on the freight assumptions already used in pages 1/2/4,
+with a vessel-to-commodity map and a proxy-validation check against the
+one real dollar-freight series in this app.
 
 Built for **correctness and clarity over UI polish**: every displayed
 number carries an explicit unit, every non-trivial assumption is called
@@ -333,6 +336,8 @@ streamlit_app.py                        # landing page, nav explainer
 pages/1_Copper_East_West.py             # page 1 (S1, S2, S2b, S3-S6)
 pages/2_Lithium_Conversion_Margin.py    # page 2 (S1-S6)
 pages/3_Aluminium_Premia.py             # page 3 (S1-S6)
+pages/4_Zinc_Smelter_Margin.py          # page 4 (S1-S8)
+pages/5_Freight_Overlay.py              # page 5 (S1-S6)
 utils/data.py                 # load_ticker_raw, get_dataset, to_usd_per_tonne,
                                # resample_weekly/monthly, ensure_usdcny_csv
 utils/finance.py              # cross_corr, peak_lag, import_margin, breakeven_ratio,
@@ -340,9 +345,13 @@ utils/finance.py              # cross_corr, peak_lag, import_margin, breakeven_r
                                # ratio_minus_breakeven, scrap_discount, classify_regime,
                                # contango, breakeven_contango, premium_fair_value, carry_pnl,
                                # premium_richness, classify_carry_regime, converter_margin,
-                               # consecutive_below
+                               # consecutive_below, zinc_per_dmt_conc, tc_per_tonne_zinc,
+                               # smelter_margin, rolling_benchmark_proxy, freight_regime,
+                               # freight_regime_badge, freight_baseline, freight_scaler,
+                               # freight_adjusted_cost
 config.py                     # ticker -> CSV file map + unit metadata (single source of truth),
-                               # DROPPED_TICKERS, ALUMINIUM_DATA_CAVEATS, LITHIUM_DATA_CAVEATS
+                               # DROPPED_TICKERS, ALUMINIUM_DATA_CAVEATS, LITHIUM_DATA_CAVEATS,
+                               # ZINC_DATA_CAVEATS, VESSEL_COMMODITY_MAP, FREIGHT_DATA_CAVEATS
 data/csv/                     # Bloomberg-export CSVs, one per ticker (+ cached USDCNY.csv)
 requirements.txt
 ```
@@ -1018,3 +1027,243 @@ zinc's lower-magnitude margin swings.
 - Margin is indicative and pre-tax; S6's curtailment narrative is
   qualitative context, not derived from any tonnage data on this page.
 - All figures are indicative and pre-tax.
+
+---
+
+# Page 5 — Freight Overlay
+
+Theme: freight as a **cross-basin regime overlay** that modulates the
+arb/margin assumptions already used in pages 1 (Cu), 2 (Li), and 4 (Zn) —
+not a new source of $/t route freight. Physical traders live and die on
+freight; this page shows the freight regime across Baltic vessel classes,
+maps each class to the commodities it actually moves, and freight-adjusts
+the other pages' existing freight sliders by a Baltic-derived scaler.
+
+**Scope limit, stated up front (also banner-level in-app)**: the Baltic
+series are unitless **index points**, not USD/t on any named route — there
+is no Cape C5 / Panamax route USD/t series in this dataset, and none is
+fabricated here. Freight enters the app two ways only: (a) a **regime
+signal** (rolling percentile/z-score, still in index points) and (b) a
+unitless **scaler** applied to the existing USD/t freight sliders already
+in pages 1/2/4. A dollar figure only ever re-enters by scaling an
+*existing* slider assumption — never a new fabricated per-route number.
+The one real dollar-freight series anywhere in this app is the Li CIF-FOB
+spread (`L4CNSPAU - LCBMAUSF`, page 2's S4), used here to validate the
+Baltic proxy, never the reverse.
+
+## Data schema & ticker registry (page 5)
+
+Every ticker/unit/frequency below was checked directly against the CSVs
+in `data/csv/` before being wired up. Same finding as every prior page:
+everything here is monthly, not daily — plus one more consequential
+finding specific to this page (see "Data caveats" below).
+
+| Ticker | Description | Raw unit | Frequency (verified) |
+|---|---|---|---|
+| `BDIY` | Baltic Dry Index — dry-bulk composite | index pts | **monthly** |
+| `BCI14` | Baltic Capesize Index — iron ore/coal, large dry-bulk | index pts | **monthly**, starts 2014-04 |
+| `BSI` | Baltic Supramax Index — Cu/Zn conc, spodumene, minor bulk (map's PRIMARY conc/spod proxy) | index pts | **monthly**, **stale — ends 2017-03** |
+| `BHSI` | Baltic Handysize Index — smaller conc/spod parcels, minor bulk (practical default proxy here) | index pts | **monthly**, current through 2026-06 |
+| `BIDY` | Baltic Dirty Tanker Index — crude (context only) | index pts | **monthly** |
+| `BITY` | Baltic Clean Tanker Index — refined products (context only) | index pts | **monthly** |
+| `L4CNSPAU` / `LCBMAUSF` | China spod CIF (AU-origin) / spod FOB Australia — reused from page 2 for the ONE real $/t freight series (`CIF - FOB`) | USD/t | **monthly** |
+| `CECNVXAQ` / `LMCADY` / `CECN0002` | SHFE cathode / LME cash / Yangshan premium — reused from page 1 for the S4 Cu freight-scaled margin | CNY/t (÷USDCNY) / USD/t / USD/t | **monthly** (resampled here; daily natively on page 1) |
+| `AUDUSD` / `USDZAR` / `USDRUB` / `USDTRY` / `USDIDR` / `EURUSD` / `DXY` / `USGGT10Y` | S6 macro/exporter-FX context only | FX/%/index | **monthly** |
+
+### Data caveats found while wiring this page up
+
+Recorded in `config.FREIGHT_DATA_CAVEATS` and surfaced in an in-app
+expander on the page itself:
+
+- **All six Baltic series are monthly, not "daily, gaps" as the brief
+  assumed** — same finding as pages 2/3/4. The regime window, S3 lead-lag,
+  and the scaler are all in months, not weeks.
+- **`BSI` (Supramax) — the vessel map's domain-correct PRIMARY conc/spod
+  proxy — is stale in this dataset (ends 2017-03) and has ZERO temporal
+  overlap with the one real freight-validation series** (`L4CNSPAU -
+  LCBMAUSF`, which only starts 2023-09). It genuinely cannot be validated
+  here, regardless of what the brief assumes. `BHSI` (Handysize, current
+  through 2026-06, the map's secondary conc/spod proxy) is used as the
+  **practical default** throughout page 5 and in the back-integrated
+  badges on pages 1/2/4; `BSI` remains selectable for domain/historical
+  reference with an explicit staleness+no-overlap warning.
+- **`BCI14` (Capesize) starts 2014-04** in this dataset — shorter history
+  than the other Baltic series, but comfortably covers the page's default
+  3Y window.
+- **Cross-panel month-end date mismatch**: `L4CNSPAU`/`LCBMAUSF` and the
+  Baltic series stamp month-end dates a day or two apart (e.g. calendar
+  '30' vs business-day '29'), which silently drops most rows under a raw
+  `pd.concat().dropna()`. Every monthly comparison on this page resamples
+  through `utils.data.resample_monthly` (`.resample('ME').last().ffill()`)
+  onto one canonical grid first — the same explicit-resample idiom used
+  throughout pages 1/3 for mixed-frequency series, just applied here to
+  fix a mixed-*day-of-month* issue rather than a mixed-frequency one.
+
+## Vessel → commodity map (`config.VESSEL_COMMODITY_MAP`)
+
+The domain-knowledge core of this page — encoded in `config.py`, not
+buried in page logic, so it stays the single source of truth:
+
+```
+Capesize   (BCI14) -> iron ore, coal, large dry-bulk       — context only
+Supramax   (BSI)   -> base-metal concentrates (Cu, Zn),     — PRIMARY proxy for
+                       spodumene, minor bulk                  pages 1/2/4 (STALE here)
+Handysize  (BHSI)  -> smaller conc/spod parcels, minor bulk — practical default proxy
+Dirty tanker (BIDY)-> crude                                 — context only
+Clean tanker (BITY)-> refined products                      — context only
+```
+
+Cu/Zn concentrate and spodumene move on Supramax/Handysize freight, **not**
+Capesize (which is big iron-ore/coal bulk — a different physical trade
+lane entirely). Getting this backwards — treating Capesize as the metals
+freight proxy because it's the largest, most-watched Baltic sub-index —
+would be an instant credibility loss on a page whose entire purpose is
+mapping vessel classes to the right commodities.
+
+## Core logic
+
+**Regime transform** (`utils.finance.freight_regime`, reusable — importable
+by pages 1/2/4):
+
+```
+pctile  = trailing rank of today's value within its own last `window` periods (0-100)
+zscore  = (value - rolling_mean) / rolling_std, same window
+regime  = LOW (pctile < 25) / NORMAL / HIGH (pctile > 75)
+```
+
+`window` defaults to 36 (months) = 3Y, a sidebar slider. Using a
+*trailing* percentile (not a whole-sample one) keeps the regime signal
+meaningful even though the Baltic indices' own base/methodology has
+shifted over their multi-decade history — a trailing window never
+compares today against a 1990s base level.
+
+**Freight scaler** (the integration — `utils.finance.freight_baseline` +
+`freight_scaler` + `freight_adjusted_cost`):
+
+```
+baseline        = rolling-mean(vessel_index, window)   OR   vessel_index observed on a fixed ref date
+freight_scaler  = vessel_index / baseline                       # unitless
+freight_$t_adj  = base_freight_$t * freight_scaler               # base_freight_$t = the EXISTING
+                                                                  # page-1/2 slider default
+```
+
+Both baseline modes are a sidebar selector. `freight_$t_adj` feeds S4,
+which calls `utils.finance.import_margin()` (page 1) directly with the
+adjusted freight argument instead of duplicating the formula.
+
+**Proxy validation**:
+
+```
+implied_freight_real = L4CNSPAU - LCBMAUSF     # USD/t, real AU->China spod freight (page 2's S4)
+```
+
+Correlated (monthly, differenced for stationarity) against `BSI`/`BHSI`
+via the same `cross_corr`/`peak_lag` engine pages 1/4 use. This is the
+credibility-anchor exercise the brief calls for — see S3 for why it's
+reported as a weak/inconclusive result in this dataset rather than a
+clean confirmation.
+
+## S1 — Header / KPI
+
+Regime badge per vessel class (Capesize/Supramax/Handysize/Dirty/Clean —
+`utils.finance.freight_regime_badge`), BDI level + trailing percentile,
+the real spod implied-freight $/t, and the scope-limit banner. Every
+metric's delta shows its *observation date*, not "today" — `BSI`'s badge
+visibly reads 2017-03 while everything else reads 2026-06, so staleness
+is self-evident on the metric itself rather than only in a footnote.
+Default chart date range is the last 3 years, same convention as pages 1-4.
+
+## S2 — Freight regime panel
+
+All six Baltic indices rebased to 100 at the selected window's start (so
+vessel classes with very different absolute point levels are visually
+comparable), with the sidebar-selected vessel's LOW/HIGH regime shaded
+green/red across the whole panel. The vessel→commodity legend and the
+"why Supramax/Handysize, not Capesize" rationale are restated directly
+under the chart.
+
+## S3 — Proxy validation (credibility anchor, reported as-observed)
+
+`implied_freight_real` (CIF-FOB, page 2's real dollar freight) plotted
+against `BSI` and `BHSI` on a dual axis, plus a peak-lag/correlation
+summary table (`cross_corr`/`peak_lag`, monthly, differenced). **Actual
+result in this dataset**: `BSI` has zero temporal overlap with the real
+freight series (BSI ends 2017-03; the CIF-FOB spread only starts
+2023-09) and genuinely cannot be validated here. `BHSI` does overlap
+(n≈34 months) but the correlation is weak (~0.06-0.2 depending on lag)
+and lag-unstable at this sample size — this dataset does **not** cleanly
+confirm "Baltic tracks the real spod-freight leg" as a strong empirical
+result. The page states this plainly rather than oversell it: the Baltic
+scaler used in S4 is a reasonable *directional* proxy under the vessel
+map's domain logic, not something this sample statistically proves.
+Caveats stated in-app: index-basis mismatch between panels, CIF-FOB
+embeds insurance+timing on top of pure freight, and in-sample correlation
+≠ causation regardless of the result.
+
+## S4 — Freight-adjusted arb sensitivity
+
+- **Cu** (mirrors page 1): `import_margin()` recomputed at the page's flat
+  base-freight slider vs the same freight scaled by the selected vessel
+  (Handysize by default). Both lines charted together, shaded wherever
+  the sign of the margin flips (arb OPEN↔CLOSED) purely from the freight
+  scaling — with everything else held fixed. A metric reports the latest
+  $/t swing directly.
+- **Li** (mirrors page 2's S4): an assumed baseline freight rate x the
+  Baltic scaler (a *prediction*) plotted against the real observed
+  CIF-FOB freight leg (`implied_freight_real`). This is a comparison of
+  prediction vs observation, not a recomputation of the converter margin
+  — large divergence says more about the assumed baseline and the S3
+  index-basis mismatch than about a real freight move.
+- **Al**: explicitly **light touch** — `premium_fair_value()` (page 3) has
+  no explicit ocean-freight term to begin with (Al regional premia are
+  carry/duty/tariff-dominated), so freight-scaling it the way Cu/Li are
+  scaled would misrepresent a minor lever as a major one. Noted, not
+  modeled, per the brief's explicit scope call.
+- **Zn**: not included in S4 — the smelter-margin formula (`smelter_margin`,
+  page 4) has no freight term either (it's a TC/treatment-charge business,
+  not a freight-exposed physical-arb business), so there is no margin leg
+  to freight-adjust.
+
+## S5 — Cross-commodity freight dashboard
+
+Small multiples — one mini-chart per Baltic series (composite + 5 vessel
+classes), each with its own regime shading, a one-line commodity/role
+caption, and (for Supramax/Handysize) `st.page_link` buttons straight to
+pages 1/2/4 — a one-glance "freight state of the physical complex."
+
+## S6 — Macro/FX context (optional, degrades gracefully)
+
+BDI vs `DXY`/`USGGT10Y` (bulk demand/financing backdrop) and exporter FX
+(`USDZAR` South Africa, `USDRUB` Russia, `USDIDR` Indonesia, plus
+`AUDUSD`/`EURUSD`) as flow-cost context — qualitative only, explicitly
+stated as feeding no calc anywhere in the app. Each panel degrades to a
+caption (not a crash) if its ticker is unavailable.
+
+## Back-integration into pages 1/2/4
+
+`utils.finance.freight_regime()` and `freight_regime_badge()` are
+reusable, importable functions (not page-5-specific), so pages 1, 2, and
+4 each load `BHSI` and render one extra "Freight regime (Handysize, ctx)"
+KPI column in their existing S1 header row. This is purely additive and
+import-only — it does not feed into any margin/arb calc on those pages,
+degrades to "n/a" if `BHSI` is unavailable, and uses Handysize rather than
+the map's nominal-primary Supramax for the same staleness reason
+documented above.
+
+## Known limitations (page 5)
+
+- Baltic indices are index points, never converted to $/t — there is no
+  named-route dollar freight series in this dataset, and this page does
+  not fabricate one.
+- `BSI` (the vessel map's domain-correct primary conc/spod proxy) cannot
+  be validated against the real freight series in this dataset at all
+  (zero overlap); `BHSI`'s validation result is weak/inconclusive, not a
+  confirmed empirical finding — stated plainly in S3 rather than glossed
+  over.
+- The S4 Cu/Li freight sliders (base freight, baseline AU→China rate)
+  mirror but do not read page 1/2's live sidebar state — they are
+  independent widgets with matching defaults, not a cross-page-linked
+  parameter.
+- The Al and Zn pages are deliberately excluded from the S4 recompute (see
+  S4 above) rather than forced into a freight-scaling frame that doesn't
+  fit their economics.

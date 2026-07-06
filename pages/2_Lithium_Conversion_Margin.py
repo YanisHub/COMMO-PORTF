@@ -30,7 +30,7 @@ st.set_page_config(page_title="Lithium Conversion Margin", layout="wide")
 
 ALL_TICKERS = [
     "L4CNSPI", "SVPA", "LICNSPDU", "L4CNSPAU", "L4CNMJGO", "LCBMAUSF",
-    "AUDUSD", "BDIY", "BSI",
+    "AUDUSD", "BDIY", "BSI", "BHSI",  # BHSI: optional freight-regime badge (page 5 back-integration)
 ]
 REFERENCE_GRADE = 6.0  # % Li2O — the grade every spod series here is benchmarked at
 
@@ -85,10 +85,9 @@ spod_label = st.sidebar.selectbox(
     "Spodumene CIF series used for the margin calc",
     options=list(SPOD_OPTIONS),
     index=0,
-    help="All four are SC6/6% Li2O CIF China spodumene series — the conversion-ratio "
-         "economics are consistent across them. `SVPA` (Fastmarkets future) genuinely "
-         "only starts 2024-10 in this dataset; selecting it clips the available chart "
-         "history rather than backfilling.",
+    help="All four are SC6/6% Li2O CIF China spodumene series. "
+         "`SVPA` (Fastmarkets future) genuinely "
+         "only starts 2024-10 in this dataset",
 )
 spod_choice = SPOD_OPTIONS[spod_label]
 
@@ -109,15 +108,14 @@ conversion_ratio = st.sidebar.slider(
          "(2 Li per formula unit each), so 60 kg Li2O -> 60 x (73.89/29.88) = 148.4 kg "
          "Li2CO3 at 100% recovery -> 1/0.1484 = 6.74 t concentrate per t carbonate, "
          "theoretical maximum. Real roast/leach/purification recovery of ~85-90% pushes "
-         "this to ~7.5-8.5 t/t in practice — the 8.0 default corresponds to ~84% "
-         "effective recovery. This is the single most consequential assumption on the "
-         "page — reviewers should check it first.",
+         "this to ~7.5-8.5 t/t in practice -> the 8.0 default corresponds to ~84% "
+         "effective recovery"
 )
 conv_cost = st.sidebar.slider(
     "Conversion cost — roast/reagents/energy/labor (USD/t Li2CO3)",
     min_value=0, max_value=5000, value=2200, step=100,
     help="Indicative flat processing cost per tonne of Li2CO3 produced. No public cost-curve "
-         "series is used — this is a slider, not data.",
+         "series is used",
 )
 grade_pct = st.sidebar.slider(
     "Actual concentrate grade traded (% Li2O)",
@@ -132,14 +130,14 @@ freight_inland = st.sidebar.slider(
     "Inland freight, port -> converter (USD/t Li2CO3)",
     min_value=0, max_value=200, value=40, step=5,
     help="Indicative inland logistics cost moving CIF-landed concentrate to the Chinese "
-         "conversion plant (e.g. Jiangxi/Sichuan) — separate from the S4 ocean CIF-FOB "
+         "conversion plant (e.g. Jiangxi/Sichuan) —> separate from the S4 ocean CIF-FOB "
          "freight leg, which is observed from data, not a slider.",
 )
 other_cost = st.sidebar.slider(
     "Other / unmodeled costs (USD/t Li2CO3)",
     min_value=0, max_value=500, value=0, step=25,
     help="Catch-all buffer for costs not otherwise modeled (packaging, minor logistics, "
-         "yield-loss buffer beyond conversion_ratio). Defaults to 0 — add only if you want "
+         "yield-loss buffer beyond conversion_ratio). Defaults to 0 —> add only if you want "
          "to stress-test a thinner margin.",
 )
 
@@ -148,7 +146,7 @@ curtailment_n = st.sidebar.slider(
     "Consecutive months underwater to flag curtailment risk",
     min_value=1, max_value=12, value=4, step=1,
     help="Every series feeding the margin calc is verified **monthly** in this dataset (see "
-         "the data-caveats expander below) — this counts consecutive MONTHLY observations "
+         "the data-caveats expander below) —> this counts consecutive MONTHLY observations "
          "with margin < $0/t, not weeks.",
 )
 
@@ -184,22 +182,17 @@ st.caption(
 )
 
 st.info(
-    "`USDCNY` is fetched from **Yahoo Finance** (`CNY=X`) — `L4CNMJGO` (carbonate, CNY/t) "
-    "depends on it for its USD/t conversion.",
-    icon="💱",
+    "`USDCNY` is fetched from **Yahoo Finance** (`CNY=X`)",
 )
 st.info(
     "**Frequency note**: every spodumene/carbonate series here + `AUDUSD` are verified "
-    "**monthly** (month-end prints) in this dataset, not daily — the margin calc, S2-S6 "
+    "**monthly** (month-end prints) in this dataset -> the margin calc, S2-S6 "
     "charts, and the S6 curtailment slider are all in months, not weeks.",
-    icon="🗓️",
 )
 st.info(
     "**Carbonate route only** (99.5% battery-grade `L4CNMJGO`); the LiOH (hydroxide) route "
-    "is out of scope. Margin is **indicative, pre-by-product, pre-tax** — by-products, VAT/"
-    "income tax, and plant-specific yield are excluded. Never compare CNY/t and USD/t figures "
-    "directly — everything shown is USD/t.",
-    icon="ℹ️",
+    "is out of scope. Margin is **indicative, pre-by-product, pre-tax**: by-products, VAT/"
+    "income tax, and plant-specific yield are excluded"
 )
 
 if warnings:
@@ -207,9 +200,6 @@ if warnings:
         for w in warnings:
             st.markdown(f"- {w}")
 
-with st.expander("Data caveats found while wiring up this page (see config.py REVISION note)"):
-    for tk, note in config.LITHIUM_DATA_CAVEATS.items():
-        st.markdown(f"- **{tk}**: {note}")
 
 # global date range, bounded by whatever data we actually have
 all_dates = [s.dropna().index for s in converted.values() if not s.dropna().empty]
@@ -219,7 +209,7 @@ if all_dates:
 else:
     data_min, data_max = pd.Timestamp("2015-01-01"), pd.Timestamp.today()
 
-default_years = 3
+default_years = 13
 default_start = max(data_min, data_max - pd.DateOffset(years=default_years))
 start_date, end_date = st.sidebar.slider(
     "Chart date range",
@@ -253,7 +243,6 @@ if len(latest_by_source) >= 2:
             f"{spread_pct:.0f}% across sources ({detail}) — likely index-methodology/timing "
             f"differences between panels, not necessarily a real basis move. Selected "
             f"benchmark: **{spod_choice}**.",
-            icon="⚠️",
         )
 
 if spod_choice == "SVPA" and "SVPA" in converted and not converted["SVPA"].dropna().empty:
@@ -262,7 +251,6 @@ if spod_choice == "SVPA" and "SVPA" in converted and not converted["SVPA"].dropn
         st.info(
             f"**SVPA guard**: `SVPA` data starts {svpa_min.date()} — the margin calc and every "
             f"chart below will show a gap before that date rather than a backfilled value.",
-            icon="🚧",
         )
 
 # --- core margin calc, needed by S1 KPI row, S2, S3, S6 --------------------
@@ -279,7 +267,7 @@ if require(converted, [spod_choice, "L4CNMJGO"], "S1/S2/S3/S6 (core margin calc)
         reference_grade=REFERENCE_GRADE,
     )
 
-kpi_cols = st.columns(5)
+kpi_cols = st.columns(6)
 carb_latest = converted.get("L4CNMJGO", pd.Series(dtype=float)).dropna()
 spod_latest = converted.get(spod_choice, pd.Series(dtype=float)).dropna()
 kpi_cols[0].metric(
@@ -306,7 +294,22 @@ else:
     kpi_cols[3].metric("Gross margin (indicative)", "n/a")
     regime = "UNKNOWN"
 badge_color = {"HEALTHY": "🟢", "UNDERWATER": "🔴", "BREAKEVEN": "🟡", "UNKNOWN": "⚪"}[regime]
-kpi_cols[4].metric("Regime", f"{badge_color} {regime}")
+kpi_cols[4].metric("Regime", f"{regime}")
+
+# --- optional freight-regime badge (page 5 back-integration) ---------------
+# Handysize (BHSI), not Supramax (BSI) — BSI is stale in this dataset (ends
+# 2017-03); see config.FREIGHT_DATA_CAVEATS and page 5 for the full writeup.
+# Import-only, degrades to "n/a" if BHSI is missing — no calc above depends on it.
+freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted and not converted["BHSI"].dropna().empty else None
+if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
+    frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
+    kpi_cols[5].metric(
+        "Freight regime (Handysize, ctx)", ufin.freight_regime_badge(frow["regime"]),
+        f"{frow['pctile']:.0f}th pctile", delta_color="off",
+        help="Baltic Handysize (BHSI) freight regime — context only, not used in the conversion-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
+    )
+else:
+    kpi_cols[5].metric("Freight regime (Handysize, ctx)", "n/a")
 
 st.divider()
 
@@ -316,10 +319,7 @@ st.divider()
 st.header("S2 — Conversion margin time series")
 st.markdown(
     f"`gross_margin = carbonate_USD − spod_cost_per_t_LC − conv_cost − freight_inland − other`, "
-    f"using the **{spod_choice}** benchmark. Carbonate and spod-cost-per-tonne-carbonate are "
-    "overlaid first (with the area between them shaded) so the margin squeeze is mechanically "
-    "visible — as the two lines converge, the margin chart below goes to zero. Shaded red = "
-    "**UNDERWATER** (margin < $0/t)."
+    f"using the **{spod_choice}** benchmark. Knowing that `spod_cost_per_t_LC = conv_ratio * (reference_grade/actual_grade_pct).`"
 )
 
 if not margin_df.empty:
@@ -332,35 +332,47 @@ if not margin_df.empty:
     ))
     fig_stack.add_trace(go.Scatter(
         x=mdf.index, y=mdf["spod_cost"], name=f"Spod cost / t carbonate ({spod_choice}, USD/t)",
-        line=dict(color="#d62728"), fill="tonexty", fillcolor="rgba(214,39,40,0.12)",
+        line=dict(color="#d62728"),
+    ))
+    fig_stack.add_trace(go.Scatter(
+        x=mdf.index, y=mdf["spod_cost"] + conv_cost + freight_inland + other_cost, name=f"Spod cost / t carbonate ({spod_choice}, USD/t) + conv cost + freight inland + other cost",
+        line=dict(color='#2770d6'),
     ))
     fig_stack.update_layout(
-        title="Carbonate price vs spodumene cost per tonne of carbonate (shaded = the squeeze)",
+        title="Carbonate price vs spodumene cost per tonne of carbonate",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_stack, use_container_width=True)
+    st.plotly_chart(fig_stack, width='stretch')
 
     fig_margin = go.Figure(go.Scatter(
         x=mdf.index, y=mdf["margin"], name="Gross margin (USD/t)",
         line=dict(color="#1f77b4"), fill="tozeroy",
     ))
+    margin_pct_s2 = (mdf["margin"] / mdf["carbonate_usd"] * 100).dropna()
+    if not margin_pct_s2.empty:
+        fig_margin.add_trace(go.Scatter(
+            x=margin_pct_s2.index, y=margin_pct_s2.values, name="Margin (% of carbonate price)",
+            yaxis="y2", line=dict(color="#9467bd", dash="dot"),
+        ))
     fig_margin.add_hline(y=0, line_dash="dot", line_color="gray")
     add_regime_shading(fig_margin, mdf["margin"] < 0, color="Crimson", opacity=0.2)
     fig_margin.add_vrect(
-        x0="2023-01-01", x1="2024-12-31", fillcolor="Gray", opacity=0.08, line_width=0,
+        x0="2023-01-01", x1="2024-01-01", fillcolor="Gray", opacity=0.08, line_width=0,
         annotation_text="2023-24 lithium crash", annotation_position="top left",
     )
     fig_margin.update_layout(
         title="Indicative converter gross margin, USD/t Li2CO3 (shaded = UNDERWATER)",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
+        yaxis2=dict(title="margin (% of carbonate price)", overlaying="y", side="right"),
+        legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_margin, use_container_width=True)
+    st.plotly_chart(fig_margin, width='stretch')
 
     latest_margin_clipped = mdf["margin"].dropna()
     if not latest_margin_clipped.empty:
         headline = (
-            "**Margin has flipped negative** — consistent with the curtailment thesis tested in S6."
+            "**Margin has flipped negative** —> consistent with the curtailment thesis tested in S6."
             if latest_margin_clipped.iloc[-1] < 0
             else "Margin is currently positive under the selected assumptions."
         )
@@ -375,8 +387,8 @@ st.header("S3 — Margin decomposition")
 st.markdown(
     "Waterfall on a selected date: carbonate revenue minus spod cost, conversion cost, and "
     "freight/other, down to net margin. Second view: margin as a **% of carbonate price** "
-    "(compression ratio) over time — scale-free, so it's comparable across the 2022 boom and "
-    "the 2023-25 crash despite the huge absolute price swing."
+    "(compression ratio) over time -> scale-free -> comparable across the 2022 boom and "
+    "the 2023-25 crash despite huge price variation"
 )
 
 if not margin_df.empty:
@@ -404,24 +416,24 @@ if not margin_df.empty:
             title=f"Margin waterfall, snapshot {snap_date.date()} (USD/t, {spod_choice} benchmark)",
             yaxis_title="USD/t",
         )
-        st.plotly_chart(fig_wf, use_container_width=True)
+        st.plotly_chart(fig_wf, width='stretch')
         st.caption(
             f"Snapshot: carbonate ${row['carbonate_usd']:,.0f}/t − spod cost ${row['spod_cost']:,.0f}/t "
             f"− conversion ${conv_cost:,.0f}/t − freight+other ${freight_inland + other_cost:,.0f}/t "
             f"= net ${row['margin']:,.0f}/t (nearest available month to {wf_date_input.date()}: {snap_date.date()})."
         )
 
-    margin_pct = (margin_df["margin"] / margin_df["carbonate_usd"] * 100).rename("margin_pct")
-    margin_pct_c = clip(margin_pct)
-    if not margin_pct_c.empty:
-        fig_pct = go.Figure(go.Scatter(x=margin_pct_c.index, y=margin_pct_c.values, name="Margin (% of carbonate price)", line=dict(color="#9467bd")))
-        fig_pct.add_hline(y=0, line_dash="dot", line_color="gray")
-        add_regime_shading(fig_pct, margin_pct_c < 0, color="Crimson", opacity=0.2)
-        fig_pct.update_layout(
-            title="Margin compression ratio: gross margin as % of carbonate price",
-            yaxis_title="%", xaxis_title="date", hovermode="x unified",
-        )
-        st.plotly_chart(fig_pct, use_container_width=True)
+    # margin_pct = (margin_df["margin"] / margin_df["carbonate_usd"] * 100).rename("margin_pct")
+    # margin_pct_c = clip(margin_pct)
+    # if not margin_pct_c.empty:
+    #     fig_pct = go.Figure(go.Scatter(x=margin_pct_c.index, y=margin_pct_c.values, name="Margin (% of carbonate price)", line=dict(color="#9467bd")))
+    #     fig_pct.add_hline(y=0, line_dash="dot", line_color="gray")
+    #     add_regime_shading(fig_pct, margin_pct_c < 0, color="Crimson", opacity=0.2)
+    #     fig_pct.update_layout(
+    #         title="Margin compression ratio: gross margin as % of carbonate price",
+    #         yaxis_title="%", xaxis_title="date", hovermode="x unified",
+    #     )
+    #     st.plotly_chart(fig_pct, width='stretch')
 
 st.divider()
 
@@ -430,19 +442,41 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.header("S4 — FOB vs CIF = freight leg")
 st.markdown(
-    "`LCBMAUSF` (spodumene FOB Australia) vs `L4CNSPAU` (China 6% spod CIF **from Australia**) "
-    "— the best like-for-like match on origin, used here regardless of the S1 benchmark "
-    "selection above, since the freight leg only makes sense compared against an AU-origin CIF "
+    "`LCBMAUSF` (spodumene FOB Australia) vs `L4CNSPAU` (China 6% spod CIF **from Australia**)."
+    "Since the freight leg only makes sense compared against an AU-origin CIF "
     "print: `implied_freight = spod_CIF − spod_FOB_AU`, i.e. AU→China ocean freight + insurance "
-    "+ timing. Negative or spiking values likely reflect index-basis/timing mismatches between "
-    "the two panels rather than genuine negative freight — flagged, not smoothed over."
+    "+ timing. Real ocean freight+insurance can never be negative, so negative prints are "
+    "diagnostic of a cross-panel mismatch -> not a market signal"
 )
+
+CIF_INCEPTION_END = pd.Timestamp("2023-12-31")
 
 if require(converted, ["LCBMAUSF", "L4CNSPAU"], "S4"):
     df4 = pd.concat(
         {"fob": converted["LCBMAUSF"], "cif": converted["L4CNSPAU"]}, axis=1, sort=True
     ).dropna()
     df4["implied_freight"] = df4["cif"] - df4["fob"]
+
+    cif_start = converted["L4CNSPAU"].dropna().index.min()
+    if cif_start >= pd.Timestamp("2023-01-01"):
+        post_inception = df4.loc[df4.index > CIF_INCEPTION_END, "implied_freight"]
+        st.warning(
+            f"**Index-inception artifact, {cif_start.date()}-{CIF_INCEPTION_END.date()}**: "
+            f"`L4CNSPAU` only starts {cif_start.date()} in this dataset (`LCBMAUSF` runs back "
+            "to 2018). Its first few prints land right in the middle of the crash's steepest "
+            "leg (AU FOB fell ~58% in 3 months). A newly-launched assessment with thin panel "
+            "participation, on top of a market moving hundreds of USD/t per month, is enough to "
+            "produce the large negative spread seen there without any real negative freight. "
+            + (
+                f"Excluding that window, implied freight centers positive (mean "
+                f"${post_inception.mean():,.0f}/t, median ${post_inception.median():,.0f}/t) — a "
+                "plausible AU→China rate, with the remaining occasional small negative months "
+                "reading as ordinary cross-panel noise (differing assessment cutoff dates / "
+                "methodology between two independently-run indices)"
+                if not post_inception.empty else ""
+            ),
+        )
+
     df4c = df4.loc[(df4.index >= start_date) & (df4.index <= end_date)]
 
     fig_fobcif = go.Figure()
@@ -453,7 +487,7 @@ if require(converted, ["LCBMAUSF", "L4CNSPAU"], "S4"):
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_fobcif, use_container_width=True)
+    st.plotly_chart(fig_fobcif, width='stretch')
 
     median_abs_freight = df4c["implied_freight"].abs().median()
     if median_abs_freight > 0:
@@ -468,6 +502,11 @@ if require(converted, ["LCBMAUSF", "L4CNSPAU"], "S4"):
         line=dict(color="#2ca02c"), fill="tozeroy",
     ))
     fig_freight.add_hline(y=0, line_dash="dot", line_color="gray")
+    if cif_start >= pd.Timestamp("2023-01-01") and cif_start <= CIF_INCEPTION_END:
+        fig_freight.add_vrect(
+            x0=cif_start, x1=CIF_INCEPTION_END, fillcolor="Orange", opacity=0.15, line_width=0,
+            annotation_text="CIF index inception (thin panel)", annotation_position="top left",
+        )
     if not anomalies.empty:
         fig_freight.add_trace(go.Scatter(
             x=anomalies.index, y=anomalies["implied_freight"], mode="markers",
@@ -491,7 +530,7 @@ if require(converted, ["LCBMAUSF", "L4CNSPAU"], "S4"):
         title="Implied AU->China freight leg (CIF − FOB, USD/t)",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_freight, use_container_width=True)
+    st.plotly_chart(fig_freight, width='stretch')
 
 st.divider()
 
@@ -500,12 +539,11 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.header("S5 — Producer squeeze (FX)")
 st.markdown(
-    "`FOB_AUD = LCBMAUSF / AUDUSD` — the same spodumene FOB price restated in AUD, the "
+    "`FOB_AUD = LCBMAUSF / AUDUSD` same spodumene FOB price restated in AUD, the "
     "currency AU miners' costs are mostly denominated in. When AUD weakens alongside a falling "
     "USD spodumene price, AU producer revenue in local-currency terms falls by less than the "
-    "USD price suggests — cushioning miners and helping explain why AU mines (Greenbushes) ran "
-    "longer through the crash than Chinese converters, whose margin is a pure USD/CNY spread "
-    "with no such FX cushion."
+    "USD price suggests -> cushioning miners and helping explain why AU mines (Greenbushes) ran "
+    "longer through the crash than Chinese converters, whose margin is a pure USD/CNY spread."
 )
 
 if require(converted, ["LCBMAUSF", "AUDUSD"], "S5"):
@@ -524,13 +562,12 @@ if require(converted, ["LCBMAUSF", "AUDUSD"], "S5"):
         yaxis2=dict(title="AUD/t", overlaying="y", side="right"),
         legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig5, use_container_width=True)
+    st.plotly_chart(fig5, width='stretch')
 
     if not margin_df.empty:
         merged = pd.concat({"margin": margin_df["margin"], "fob_aud": df5["fob_aud"]}, axis=1, sort=True).dropna()
         merged_c = merged.loc[(merged.index >= start_date) & (merged.index <= end_date)]
         if len(merged_c) >= 3:
-            corr = merged_c["margin"].corr(merged_c["fob_aud"])
             fig_corr = go.Figure()
             fig_corr.add_trace(go.Scatter(x=merged_c.index, y=merged_c["margin"], name="China converter margin (USD/t)", line=dict(color="#1f77b4")))
             fig_corr.add_trace(go.Scatter(x=merged_c.index, y=merged_c["fob_aud"], name="AU producer FOB (AUD/t, right axis)", yaxis="y2", line=dict(color="#d62728")))
@@ -540,13 +577,46 @@ if require(converted, ["LCBMAUSF", "AUDUSD"], "S5"):
                 yaxis2=dict(title="AUD/t", overlaying="y", side="right"),
                 legend=dict(orientation="h", y=1.08),
             )
-            st.plotly_chart(fig_corr, use_container_width=True)
-            st.metric(
-                "Correlation: converter margin vs producer FOB_AUD",
-                f"{corr:+.2f} (n={len(merged_c)} months)",
-                help="Expect negative correlation over the crash: China converter margin down "
-                     "at the same time AU producer FOB_AUD revenue holds up better than the raw "
-                     "USD price — opposite ends of the same supply chain reacting differently.",
+            st.plotly_chart(fig_corr, width='stretch')
+
+            st.markdown(
+                "**Lead-lag (cross-correlation)**: `Δmargin` vs `Δfob_aud`, both differenced "
+                "(monthly) to make them stationary, swept over lags of -6..+6 months. Positive "
+                "lag k means margin **leads** fob_aud by k months; negative lag means margin "
+                "**lags** it."
+            )
+            margin_diff = merged["margin"].diff().dropna()
+            fob_aud_diff = merged["fob_aud"].diff().dropna()
+            ccf_lead = ufin.cross_corr(margin_diff, fob_aud_diff, max_lag=6)
+            ccf_lag = ufin.cross_corr(fob_aud_diff, margin_diff, max_lag=6)
+            ccf_full = pd.concat([
+                ccf_lag.assign(lag=lambda d: -d["lag"]).iloc[:0:-1],  # negative lags, excluding 0
+                ccf_lead,  # lag 0..6
+            ], ignore_index=True).sort_values("lag").reset_index(drop=True)
+            lag_peak, corr_peak = ufin.peak_lag(ccf_full)
+
+            colors = ["#d62728" if l == lag_peak else "#1f77b4" for l in ccf_full["lag"]]
+            fig_ccf = go.Figure(go.Bar(x=ccf_full["lag"], y=ccf_full["corr"], marker_color=colors))
+            fig_ccf.update_layout(
+                title="CCF: Δconverter margin vs Δproducer FOB_AUD (China vs AU)",
+                xaxis_title="lag, months (margin leads fob_aud →)", yaxis_title="correlation",
+            )
+            st.plotly_chart(fig_ccf, width='stretch')
+
+            if lag_peak is not None:
+                n_obs_peak = ccf_full.loc[ccf_full["lag"] == lag_peak, "n_obs"].iloc[0]
+                st.metric(
+                    "Peak lead-lag: Δmargin vs Δfob_aud",
+                    f"lag {lag_peak:+d}mo, corr {corr_peak:+.2f} (n={n_obs_peak} months)",
+                    help="Expect negative correlation near lag 0 over the crash: China converter "
+                         "margin down at the same time AU producer FOB_AUD revenue holds up "
+                         "better than the raw USD price — opposite ends of the same supply chain. "
+                         "A peak away from lag 0 would suggest one side systematically leads the "
+                         "other rather than moving together contemporaneously.",
+                )
+            st.caption(
+                "Caveat: in-sample correlation on a limited (monthly) history — peak-lag "
+                "estimates are sensitive to the sample window and differencing choice."
             )
 
 st.divider()
@@ -574,29 +644,22 @@ if not margin_df.empty:
             title=f"Curtailment-risk regime: margin < $0/t for >= {curtailment_n} consecutive months (shaded)",
             yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig6, use_container_width=True)
+        st.plotly_chart(fig6, width='stretch')
 
         latest_flag = curtailment_flag.dropna()
         if not latest_flag.empty and bool(latest_flag.iloc[-1]):
             st.error(
                 f"**Curtailment-risk regime ACTIVE** as of {latest_flag.index[-1].date()} — margin "
                 f"has been underwater for >= {curtailment_n} consecutive months under the selected assumptions.",
-                icon="🚨",
             )
         else:
             st.caption("Not currently in a curtailment-risk regime under the selected threshold and assumptions.")
 
     st.markdown(
-        "**Illustrative 2024 supply response** (qualitative context only — no tonnages are "
-        "fabricated or modeled here): widely-reported industry events coinciding with the margin "
+        "**Illustrative 2024 supply response** (qualitative context only): widely-reported industry events coinciding with the margin "
         "compression shown above include Albemarle/IGO's **Greenbushes** trimming output "
         "guidance, Chinese **lepidolite** converters around **Yichun, Jiangxi** curtailing "
         "high-cost production, and **CATL's Jianxiawo** lepidolite mine pausing operations. "
-        "These are cited for narrative context, not derived from any series on this page."
     )
 
 st.divider()
-st.caption(
-    "Lithium Conversion Margin — page 2 of the Commodity Physical Desk Monitor. "
-    "See README.md for every formula, the stoichiometry derivation, and every unit-conversion assumption."
-)

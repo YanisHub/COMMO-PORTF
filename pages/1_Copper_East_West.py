@@ -28,6 +28,7 @@ st.set_page_config(page_title="Copper East-West Arb", layout="wide")
 ALL_TICKERS = [
     "LMCADY", "LMCADS03", "CU1", "SHFCCOPD", "SHFCCOPO", "COMXCOPR",
     "CECN0002", "CECN0001", "CECNVGFA", "CECNVXAQ", "CNIVCORE", "CBB1SPOT",
+    "BHSI",  # optional freight-regime badge (page 5 back-integration), unused in any calc here
 ]
 
 
@@ -210,7 +211,7 @@ if require(converted, [price_source, "LMCADY", "CECN0002"], "S1/S2 (import margi
     df2["arb_open"] = df2["margin"] > 0
     import_arb = df2["margin"].rename("import_arb")  # S3: import arb window = S2 import margin
 
-kpi_cols = st.columns(5)
+kpi_cols = st.columns(6)
 kpi_cols[0].metric(
     "LME Cu cash",
     f"${lme_cash.dropna().iloc[-1]:,.0f}/t" if lme_cash is not None and not lme_cash.dropna().empty else "n/a",
@@ -231,6 +232,21 @@ kpi_cols[3].metric(
     f"${yangshan.dropna().iloc[-1]:,.0f}/t" if yangshan is not None and not yangshan.dropna().empty else "n/a",
 )
 kpi_cols[4].metric("Arb regime", f"{regime}")
+
+# --- optional freight-regime badge (page 5 back-integration) ---------------
+# Handysize (BHSI), not Supramax (BSI) — BSI is stale in this dataset (ends
+# 2017-03); see config.FREIGHT_DATA_CAVEATS and page 5 for the full writeup.
+# Import-only, degrades to "n/a" if BHSI is missing — no calc above depends on it.
+freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted and not converted["BHSI"].dropna().empty else None
+if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
+    frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
+    kpi_cols[5].metric(
+        "Freight regime (Handysize, ctx)", ufin.freight_regime_badge(frow["regime"]),
+        f"{frow['pctile']:.0f}th pctile", delta_color="off",
+        help="Baltic Handysize (BHSI) freight regime — context only, not used in the import-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
+    )
+else:
+    kpi_cols[5].metric("Freight regime (Handysize, ctx)", "n/a")
 
 st.divider()
 
@@ -273,7 +289,7 @@ if not df2.empty:
         yaxis_title="ratio (dimensionless)", xaxis_title="date",
         hovermode="x unified", legend=dict(orientation="h", y=1.08),
     )
-    ratio_chart_slot.plotly_chart(fig_ratio, use_container_width=True)
+    ratio_chart_slot.plotly_chart(fig_ratio, width='stretch')
 
 
     fig_margin = go.Figure()
@@ -284,7 +300,7 @@ if not df2.empty:
         title=f"Import margin = SHFE_USD/(1+VAT) − LME_cash − Yangshan − freight − financing (purple = above breakeven+{threshold_pct:.0%})",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_margin, use_container_width=True)
+    st.plotly_chart(fig_margin, width='stretch')
 
 st.divider()
 
@@ -339,7 +355,7 @@ if not df2.empty:
         yaxis_title="ratio (dimensionless)", xaxis_title="date",
         hovermode="x unified", legend=dict(orientation="h", y=1.08),
     )
-    st.plotly_chart(fig_ratio_x, use_container_width=True)
+    st.plotly_chart(fig_ratio_x, width='stretch')
 
     fig_export_margin = go.Figure()
     fig_export_margin.add_trace(go.Scatter(x=df2v.index, y=df2v["export_margin"], name="Export margin", line=dict(color="#ff7f0e"), fill="tozeroy"))
@@ -350,7 +366,7 @@ if not df2.empty:
         title="Export margin = LME_cash·(1−duty) − freight − financing − SHFE_domestic_cost(VAT-adj.)",
         yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_export_margin, use_container_width=True)
+    st.plotly_chart(fig_export_margin, width='stretch')
 
     st.caption(
         "Import and export arb are mutually "
@@ -415,7 +431,7 @@ if not df2.empty and "above_threshold" in df2v.columns:
             yaxis_title="Cumulative P&L (USD/t, 1 unit/position)", xaxis_title="exit date",
             hovermode="x unified",
         )
-        st.plotly_chart(fig_bt, use_container_width=True)
+        st.plotly_chart(fig_bt, width='stretch')
 
         stat_cols = st.columns(4)
         stat_cols[0].metric("Closed positions", f"{len(trades)}")
@@ -426,7 +442,7 @@ if not df2.empty and "above_threshold" in df2v.columns:
         with st.expander(f"Trade log ({len(trades)} positions)"):
             st.dataframe(
                 trades[["entry_date", "exit_date", "hedged_pnl", "unhedged_pnl"]],
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
 
         st.info(
@@ -475,7 +491,7 @@ if import_arb is not None and require(converted, ["CECN0002"] + stock_tickers_ne
             title="CCF: Δimport_arb → ΔYangshan premium (CECN0002)",
             xaxis_title="lag (weeks, arb leads)", yaxis_title="correlation",
         )
-        st.plotly_chart(fig_ccf1, use_container_width=True)
+        st.plotly_chart(fig_ccf1, width='stretch')
 
     stock_names = {"SHFCCOPD": "SHFE deliverable stocks", "SHFCCOPO": "SHFE on-warrant stocks"}
     for i, (stk, (ccf, lag_s, corr_s)) in enumerate(stock_ccfs.items(), start=1):
@@ -486,7 +502,7 @@ if import_arb is not None and require(converted, ["CECN0002"] + stock_tickers_ne
                 title=f"CCF: Δimport_arb → Δ{stock_names[stk]} ({stk})",
                 xaxis_title="lag (weeks, arb leads)", yaxis_title="correlation",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     summary_rows = [{
         "series": "ΔYangshan premium (CECN0002)",
@@ -503,7 +519,7 @@ if import_arb is not None and require(converted, ["CECN0002"] + stock_tickers_ne
             "expected sign": "negative",
             "n obs at peak": ccf.loc[ccf["lag"] == lag_s, "n_obs"].iloc[0] if lag_s is not None else None,
         })
-    st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(summary_rows), width='stretch', hide_index=True)
 
     st.info(
         "**Caveat**: In-sample correlation on a limited history, peak-lag estimates are sensitive to the sample window, resampling "
@@ -542,7 +558,7 @@ if require(converted, ["LMCADY", "CBB1SPOT"], "S5"):
         title="Scrap discount to LME cathode (monthly), vs LME cash (daily)",
         xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_scrap, use_container_width=True)
+    st.plotly_chart(fig_scrap, width='stretch')
 
     st.caption(
         "Note: bare-bright scrap and LME-grade cathode are imperfect substitutes (grade, "
@@ -598,7 +614,7 @@ if require(converted, ["SHFCCOPD", "SHFCCOPO", "COMXCOPR"], "S6"):
         yaxis2=dict(title="COMEX stocks (t)", overlaying="y", side="right"),
         xaxis_title="date", hovermode="x unified",
     )
-    st.plotly_chart(fig_stock, use_container_width=True)
+    st.plotly_chart(fig_stock, width='stretch')
 
     show_concentrate = st.checkbox("Show CNIVCORE (Cu concentrate imports, demand-pull context)", value=False)
     if show_concentrate and require(converted, ["CNIVCORE"], "S6 (CNIVCORE panel)"):
@@ -608,6 +624,6 @@ if require(converted, ["SHFCCOPD", "SHFCCOPO", "COMXCOPR"], "S6"):
             title="China copper ore & concentrate imports (monthly, demand-pull context)",
             yaxis_title="t/month", xaxis_title="date", hovermode="x unified",
         )
-        st.plotly_chart(fig_conc, use_container_width=True)
+        st.plotly_chart(fig_conc, width='stretch')
 
 st.divider()

@@ -32,7 +32,11 @@ and every non-trivial assumption is documented in-app and in `README.md`.
 - **4 — Zinc Smelter Margin** *(live)* — conc TC-to-metal conversion into
   a China custom-smelter margin cycle, the dual trader/smelter P&L off one
   TC series, a curtailment-risk signal, and an acid-credit sensitivity check.
-- 5 — Freight *(planned)*
+- **5 — Freight Overlay** *(live)* — Baltic vessel-class indices as a
+  cross-basin freight regime signal, a vessel-to-commodity map (Supramax/
+  Handysize for conc & spodumene, not Capesize), a proxy-validation check
+  against the one real dollar-freight series in this app, and a freight
+  scaler that feeds back into pages 1/2/4's arb/margin assumptions.
 
 Use the sidebar to navigate between pages.
 """
