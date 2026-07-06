@@ -199,14 +199,12 @@ st.info(
     "public acid-price series exists in this dataset), the annual benchmark is a spot-derived "
     "PROXY (no separately-negotiated annual series exists either), and this page is a **China "
     "custom-smelter angle only** — EU annual-benchmark smelters (Nyrstar/Korea Zinc) are out "
-    "of scope.",
-    icon="ℹ️",
+    "of scope."
 )
 st.info(
     "**Frequency note**: every zinc series on this page (`Z1CNHCOF`/`Z1CNTCIM`/`LMZSDS03`/"
     "`ZNCNMQKY`/`USDRUB`/`USDTRY`) is verified **monthly** (month-end prints) in this dataset, "
-    "not daily — every calc, chart, and the S6 curtailment slider are in months, not weeks.",
-    icon="🗓️",
+    "not daily — every calc, chart, and the S6 curtailment slider are in months, not weeks."
 )
 
 if warnings:

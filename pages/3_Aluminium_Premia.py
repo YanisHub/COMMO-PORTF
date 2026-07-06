@@ -95,18 +95,29 @@ flat_rate = st.sidebar.slider(
     help="Used only in 'Flat override' mode — ignores USGGT10Y entirely.",
 )
 
-st.sidebar.subheader("Warehouse rent (no public series)")
-daily_rent = st.sidebar.slider(
-    "Warehouse rent (USD/t/day)", min_value=0.05, max_value=2.0, value=0.45, step=0.05,
-    help="Indicative flat warehouse rent — roughly $13/t/month at the default 0.45/day. "
-         "There is no public series for LME warehouse rent (a notoriously opaque, "
-         "negotiated cost during the 2009-14 warehouse-queue era) — this is a slider, "
-         "not data.",
+st.sidebar.subheader("Warehouse rent -> no public series")
+st.sidebar.caption(
+    "One shared rent can't make Rotterdam DP look CHEAP vs fair value (S3) **and** make "
+    "the cash-and-carry trade profitable (S4/S5) at the same time with a single rent, "
+    "`premium_richness = actual_premium + carry_pnl` is a mathematical identity, and "
+    "Rotterdam DP is virtually always positive, so CHEAP (richness<0) forces carry_pnl "
+    "deeply negative. Two independent rent assumptions below decouple the two questions. "
+    "No public series for LME warehouse rent"
+)
+daily_rent_s3 = st.sidebar.slider(
+    "S3 rent — FV / richness (USD/t/day)", min_value=0.05, max_value=2.0, value=1.30, step=0.05,
+    help="Feeds `fv_premium`/`premium_richness` in S3 only — roughly $13/t/month at the "
+         "default 0.45/day.",
+)
+daily_rent_s4 = st.sidebar.slider(
+    "S4/S5 rent — carry trade (USD/t/day)", min_value=0.05, max_value=2.0, value=0.35, step=0.05,
+    help="Feeds `carry_pnl` (S4) and the `breakeven_contango` line (S5) — the same trade, "
+         "so it shares one slider. Also drives the S1 KPI row's Carry P&L / Regime badge.",
 )
 carry_days = st.sidebar.slider(
     "Carry horizon (days)", min_value=30, max_value=365, value=90, step=15,
-    help="Days of carry assumed for the financing and rent legs, ACT/360 day count "
-         "on financing.",
+    help="Days of carry assumed for the financing and rent legs (both sliders above), "
+         "ACT/360 day count on financing.",
 )
 
 st.sidebar.subheader("Lead/context")
@@ -116,7 +127,7 @@ show_fx_context = st.sidebar.checkbox(
          "shown only as optional macro context for why USD-denominated premia might move.",
 )
 show_iai = st.sidebar.checkbox(
-    "Show IAI production context (S6, historical only)", value=False,
+    "Show IAI production context (S6, historical only)", value=True,
     help="IAI production series stop at 2014-12-31 in this dataset (11+ years stale) — "
          "shown over their own native range, not overlaid against current premia.",
 )
@@ -143,14 +154,12 @@ st.info(
     "Section 232 tariffs — `premium_richness = actual − FV` is where that residual, physical "
     "signal lives. Rotterdam duty-paid is the cleaner carry proxy; the US Midwest premium "
     "(`AUP1`) has tariffs baked directly into the print, so it is shown for context but not "
-    "compared to FV directly (see S2/S3).",
-    icon="ℹ️",
+    "compared to FV directly (see S2/S3)."
 )
 st.info(
     "**Frequency note**: `AMEUDDP` (Rotterdam) and `USGGT10Y` (financing proxy) are verified "
     "**monthly** in this dataset (not daily) — forward-filled onto the daily LME grid "
-    "wherever they feed a calc, explicitly, not silently. Indicative and pre-tax throughout.",
-    icon="🗓️",
+    "wherever they feed a calc, explicitly, not silently. Indicative and pre-tax throughout."
 )
 
 if warnings:
@@ -169,7 +178,7 @@ if all_dates:
 else:
     data_min, data_max = pd.Timestamp("2015-01-01"), pd.Timestamp.today()
 
-default_years = 3
+default_years = 12
 default_start = max(data_min, data_max - pd.DateOffset(years=default_years))
 start_date, end_date = st.sidebar.slider(
     "Chart date range",
@@ -183,6 +192,17 @@ start_date, end_date = pd.Timestamp(start_date), pd.Timestamp(end_date)
 
 def clip(s: pd.Series) -> pd.Series:
     return udata.filter_date_range(s, start_date, end_date)
+
+
+# S4/S5 charts intentionally ignore the global start_date and go back further
+# (requested floor 2000-01-01) since LME cash/3M/financing data predates
+# Rotterdam/MW premia — the global start stays anchored to premia availability
+# for S1-S3, but S4/S5 aren't premia-dependent so they can show more history.
+ext_start = max(data_min, pd.Timestamp("2000-01-01"))
+
+
+def clip_ext(s: pd.Series) -> pd.Series:
+    return udata.filter_date_range(s, ext_start, end_date)
 
 
 # --- core calc, needed by S1 KPI row, S3, S4, S5 --------------------------
@@ -208,14 +228,16 @@ if require(converted, core_tickers, "S1/S3/S4/S5 (core carry calc)"):
         df["fin_rate"] = flat_rate
 
     df["financing_cost"] = ufin.financing_cost(df["lme_cash"], df["fin_rate"], carry_days)
-    warehouse_rent_value = daily_rent * carry_days
-    df["breakeven_contango"] = ufin.breakeven_contango(df["financing_cost"], warehouse_rent_value)
-    df["fv_premium"] = ufin.premium_fair_value(df["financing_cost"], warehouse_rent_value, df["contango"])
-    df["carry_pnl"] = ufin.carry_pnl(df["contango"], df["financing_cost"], warehouse_rent_value)
+    warehouse_rent_s3 = daily_rent_s3 * carry_days
+    warehouse_rent_s4 = daily_rent_s4 * carry_days
+    df["fv_premium"] = ufin.premium_fair_value(df["financing_cost"], warehouse_rent_s3, df["contango"])
+    df["breakeven_contango"] = ufin.breakeven_contango(df["financing_cost"], warehouse_rent_s4)
+    df["carry_pnl"] = ufin.carry_pnl(df["contango"], df["financing_cost"], warehouse_rent_s4)
 else:
-    warehouse_rent_value = daily_rent * carry_days
+    warehouse_rent_s3 = daily_rent_s3 * carry_days
+    warehouse_rent_s4 = daily_rent_s4 * carry_days
 
-kpi_cols = st.columns(6)
+kpi_cols = st.columns(7)
 mwp_latest = converted.get("AUP1", pd.Series(dtype=float)).dropna()
 rot_latest = converted.get("AMEUDDP", pd.Series(dtype=float)).dropna()
 cash_latest = converted.get("LMAHDY", pd.Series(dtype=float)).dropna()
@@ -224,23 +246,27 @@ m3_latest = converted.get("LMAHDS03", pd.Series(dtype=float)).dropna()
 kpi_cols[0].metric("MW premium (AUP1)", f"${mwp_latest.iloc[-1]:,.0f}/t" if not mwp_latest.empty else "n/a")
 kpi_cols[1].metric("Rotterdam DP (AMEUDDP)", f"${rot_latest.iloc[-1]:,.0f}/t" if not rot_latest.empty else "n/a")
 kpi_cols[2].metric(
-    "LME cash / 3M",
-    f"${cash_latest.iloc[-1]:,.0f} / ${m3_latest.iloc[-1]:,.0f}" if not cash_latest.empty and not m3_latest.empty else "n/a",
+    "LME cash",
+    f"{cash_latest.iloc[-1]:,.0f}" if not cash_latest.empty else "n/a",
+)
+kpi_cols[3].metric(
+    "LME 3M",
+    f"{m3_latest.iloc[-1]:,.0f}" if  not m3_latest.empty else "n/a",
 )
 
 if not df.empty:
     latest = df.dropna(subset=["contango", "carry_pnl", "breakeven_contango"]).iloc[-1]
     contango_now, carry_now, breakeven_now = latest["contango"], latest["carry_pnl"], latest["breakeven_contango"]
     regime = ufin.classify_carry_regime(contango_now, breakeven_now)
-    kpi_cols[3].metric("Contango (3M−cash)", f"${contango_now:,.0f}/t")
-    kpi_cols[4].metric(f"Carry P&L ({carry_days}d)", f"${carry_now:,.0f}/t")
+    kpi_cols[4].metric("Contango (3M−cash)", f"${contango_now:,.0f}/t")
+    kpi_cols[5].metric(f"Carry P&L ({carry_days}d)", f"${carry_now:,.0f}/t")
 else:
     regime = "UNKNOWN"
-    kpi_cols[3].metric("Contango (3M−cash)", "n/a")
-    kpi_cols[4].metric(f"Carry P&L ({carry_days}d)", "n/a")
+    kpi_cols[4].metric("Contango (3M−cash)", "n/a")
+    kpi_cols[5].metric(f"Carry P&L ({carry_days}d)", "n/a")
 
 badge_color = {"CONTANGO-CARRY ATTRACTIVE": "🟢", "BACKWARDATION": "🔴", "NEUTRAL": "🟡", "UNKNOWN": "⚪"}[regime]
-kpi_cols[5].metric("Regime", f"{badge_color} {regime}")
+kpi_cols[6].metric("Regime", f"{badge_color} {regime}")
 
 st.divider()
 
@@ -264,29 +290,26 @@ if require(converted, ["AUP1", "AMEUDDP"], "S2"):
     fig_prem = go.Figure()
     fig_prem.add_trace(go.Scatter(x=mwp.index, y=mwp.values, name="MW premium (AUP1, USD/t, daily)", line=dict(color="#1f77b4")))
     fig_prem.add_trace(go.Scatter(x=rot.index, y=rot.values, name="Rotterdam DP (AMEUDDP, USD/t, monthly)", line=dict(color="#2ca02c")))
-
     for x0, label in [("2018-03-01", "2018 S232 tariff"), ("2025-01-01", "2025 tariff escalation")]:
         fig_prem.add_vline(x=x0, line_dash="dot", line_color="gray")
         fig_prem.add_annotation(x=x0, y=1.0, yref="paper", text=label, showarrow=False, yshift=10, font=dict(size=10))
     fig_prem.add_vrect(x0="2021-09-01", x1="2022-06-01", fillcolor="Orange", opacity=0.15, line_width=0,
                         annotation_text="2021-22 EU energy premium spike", annotation_position="top left")
 
-    fig_prem.update_layout(
-        title="US Midwest vs Rotterdam Al premium (USD/t)",
-        yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
-        legend=dict(orientation="h", y=1.1),
-    )
-    st.plotly_chart(fig_prem, width='stretch')
-
     if not df.empty:
         spread = clip(df["mwp"] - df["rotterdam"])
-        fig_spread = go.Figure(go.Scatter(x=spread.index, y=spread.values, name="MWP − Rotterdam (USD/t)", line=dict(color="#9467bd"), fill="tozeroy"))
-        fig_spread.add_hline(y=0, line_dash="dot", line_color="gray")
-        fig_spread.update_layout(
-            title="MWP − Rotterdam spread (USD/t) — Rotterdam forward-filled onto the daily MWP grid",
-            yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
-        )
-        st.plotly_chart(fig_spread, width='stretch')
+        fig_prem.add_trace(go.Scatter(
+            x=spread.index, y=spread.values, name="MWP − Rotterdam spread (USD/t, RHS)",
+            line=dict(color="#9467bd"), fill="tozeroy", opacity=0.5, yaxis="y2",
+        ))
+
+    fig_prem.update_layout(
+        title="US Midwest vs Rotterdam Al premium (USD/t) with MWP − Rotterdam spread",
+        yaxis_title="USD/t", xaxis_title="date", hovermode="x unified",
+        legend=dict(orientation="h", y=1.1),
+        yaxis2=dict(title="Spread (USD/t)", overlaying="y", side="right", showgrid=False, zeroline=True),
+    )
+    st.plotly_chart(fig_prem, width='stretch')
 
     if show_fx_context and require(converted, ["DXY"], "S2 (DXY/EURUSD context)"):
         dxy = clip(converted["DXY"])
@@ -309,13 +332,15 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.header("S3 — Premium vs fair value")
 st.markdown(
-    "`FV_premium` (carry-component only) vs the **Rotterdam** duty-paid premium — the "
-    "cleanest carry proxy of the two, since `AUP1` has US tariffs baked directly into the "
-    "print and isn't a clean carry-only comparison. Both are shown at Rotterdam's native "
+    "`FV_premium` (carry-component only) vs the **Rotterdam** duty-paid premium (`AUP1` has US tariffs baked directly into the "
+    "print and isn't a clean carry-only comparison). Both are shown at Rotterdam's native "
     "**monthly** cadence (FV resampled down, not Rotterdam forward-filled up) so the chart "
     "doesn't imply daily precision Rotterdam doesn't have. "
     "`premium_richness = actual − FV`: shaded **RICH** where physical S/D (plus duty/freight) "
-    "push the premium above pure carry economics, **CHEAP** where it's carry-justified or below."
+    "push the premium above pure carry economics, **CHEAP** where it's carry-justified or below. "
+    "Uses its own **S3 rent** slider (sidebar) — deliberately independent of S4/S5's rent, "
+    "since a shared rent would make CHEAP and a profitable carry trade mutually exclusive "
+    "by construction (see sidebar note)."
 )
 
 if not df.empty and require(converted, ["AMEUDDP"], "S3"):
@@ -361,13 +386,17 @@ st.markdown(
     "Sachs, Glencore, and Trafigura ran exactly this trade at scale through LME-licensed "
     "warehouses (notably Detroit): buy cash metal, sell it forward, and store it for the "
     "duration. Positive carry pulls metal into warehouses and out of the available "
-    "(deliverable) pool — less metal reaching consumers pushes physical premia up further, "
+    "(deliverable) pool -> less metal reaching consumers pushes physical premia up further, "
     "which historically **reinforced** the trade rather than closing it, since higher premia "
-    "didn't affect the LME cash/3M spread the trade itself depends on."
+    "didn't affect the LME cash/3M spread the trade itself depends on. Uses the **S4/S5 rent** "
+    "slider (sidebar), shared with S5's breakeven line below since they're the same trade. "
+    "Chart and waterfall range extend back to 2000 (LME cash/3M actually start 2010-01-04) — "
+    "further than the dashboard's default premia-driven start, since this trade doesn't "
+    "depend on Rotterdam/MW premia data."
 )
 
 if not df.empty:
-    carry_clipped = clip(df["carry_pnl"])
+    carry_clipped = clip_ext(df["carry_pnl"])
     fig_carry = go.Figure(go.Scatter(x=carry_clipped.index, y=carry_clipped.values, name="carry_pnl (USD/t)", line=dict(color="#2ca02c"), fill="tozeroy"))
     fig_carry.add_hline(y=0, line_dash="dot", line_color="gray")
     add_regime_shading(fig_carry, carry_clipped > 0, color="LightGreen", opacity=0.25)
@@ -380,8 +409,8 @@ if not df.empty:
     st.subheader("Waterfall — carry P&L breakdown on a selected date")
     wf_date_input = st.slider(
         "Waterfall snapshot date",
-        min_value=start_date.to_pydatetime(), max_value=end_date.to_pydatetime(),
-        value=end_date.to_pydatetime(), format="YYYY-MM-DD",
+        min_value=ext_start.to_pydatetime(), max_value=end_date.to_pydatetime(),
+        value = pd.Timestamp("2013-10-20").to_pydatetime(), format="YYYY-MM-DD",
     )
     wf_ts = pd.Timestamp(wf_date_input)
     df_valid = df.dropna(subset=["contango", "financing_cost", "carry_pnl"])
@@ -393,7 +422,7 @@ if not df.empty:
             orientation="v",
             measure=["relative", "relative", "relative", "total"],
             x=["Contango", "− Financing", "− Warehouse rent", "Net carry P&L"],
-            y=[row["contango"], -row["financing_cost"], -warehouse_rent_value, 0],
+            y=[row["contango"], -row["financing_cost"], -warehouse_rent_s4, 0],
             connector=dict(line=dict(color="gray")),
         ))
         fig_wf.update_layout(
@@ -403,7 +432,7 @@ if not df.empty:
         st.plotly_chart(fig_wf, width='stretch')
         st.caption(
             f"Snapshot: contango ${row['contango']:,.0f}/t − financing ${row['financing_cost']:,.0f}/t "
-            f"− rent ${warehouse_rent_value:,.0f}/t = net ${row['carry_pnl']:,.0f}/t "
+            f"− rent ${warehouse_rent_s4:,.0f}/t = net ${row['carry_pnl']:,.0f}/t "
             f"(nearest available date to {wf_date_input.date()}: {snap_date.date()})."
         )
 
@@ -416,15 +445,15 @@ st.header("S5 — Contango/financing regime")
 st.markdown(
     "LME cash vs 3M term structure (shaded green = contango, salmon = backwardation), plus "
     "the financing-cost-driven breakeven: `breakeven_contango = financing_cost + warehouse_rent`. "
-    "Carry is only viable when the actual contango sits above that line — higher rates "
+    "Carry is only viable when the actual contango sits above that line. Higher rates "
     "(`USGGT10Y` + spread, or the flat override) widen the breakeven and make carry harder "
     "to clear."
 )
 
 if not df.empty:
-    cash_c = clip(df["lme_cash"])
-    m3_c = clip(df["lme_3m"])
-    contango_c = clip(df["contango"])
+    cash_c = clip_ext(df["lme_cash"])
+    m3_c = clip_ext(df["lme_3m"])
+    contango_c = clip_ext(df["contango"])
 
     fig_term = go.Figure()
     fig_term.add_trace(go.Scatter(x=cash_c.index, y=cash_c.values, name="LME cash (USD/t)", line=dict(color="#1f77b4")))
@@ -438,7 +467,7 @@ if not df.empty:
     )
     st.plotly_chart(fig_term, width='stretch')
 
-    breakeven_c = clip(df["breakeven_contango"])
+    breakeven_c = clip_ext(df["breakeven_contango"])
     fig_breakeven = go.Figure()
     fig_breakeven.add_trace(go.Scatter(x=contango_c.index, y=contango_c.values, name="Actual contango (USD/t)", line=dict(color="#2ca02c")))
     fig_breakeven.add_trace(go.Scatter(x=breakeven_c.index, y=breakeven_c.values, name="Breakeven contango = financing + rent (USD/t)", line=dict(color="#d62728", dash="dash")))
@@ -459,11 +488,11 @@ st.header("S6 — Supply context (optional)")
 st.markdown(
     "IAI primary aluminium production, total + regional, monthly (×1000 → t, explicit "
     "resample). **Data caveat**: every `IPAITI*` series in this dataset stops at "
-    "**2014-12-31** — 11+ years stale as of today. It is shown below over its own native "
+    "**2014-12-31** (11+ years stale as of today). It is shown below over its own native "
     "range, not overlaid against the current premia charted above, since the two don't "
     "overlap in time. The well-known 2022 EU smelter curtailment narrative (energy-cost-driven "
     "capacity cuts feeding the EU premium spike shaded in S2) is **general market knowledge**, "
-    "not something visible in this stale dataset — stated here as qualitative context only."
+    "not something visible here -> stated as general context."
 )
 
 if show_iai:
@@ -471,8 +500,7 @@ if show_iai:
         total_prod = converted["IPAITITL"].dropna()
         st.caption(
             f"IAI total production series covers {total_prod.index.min().date()} to "
-            f"{total_prod.index.max().date()} — shown in full below (not clipped to the "
-            "sidebar date range, which defaults to the last 3 years and would be empty)."
+            f"{total_prod.index.max().date()}"
         )
         yoy = total_prod.pct_change(12) * 100
 
@@ -502,7 +530,3 @@ else:
     st.caption("Toggle **'Show IAI production context'** in the sidebar to render this section.")
 
 st.divider()
-st.caption(
-    "Aluminium Premia Fair-Value & Carry — page 3 of the Commodity Physical Desk Monitor. "
-    "See README.md for every formula and unit-conversion assumption."
-)
