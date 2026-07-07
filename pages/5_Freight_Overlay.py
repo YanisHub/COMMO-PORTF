@@ -2,32 +2,29 @@
 Page 5 — Freight Overlay.
 
 Theme: freight as a CROSS-BASIN REGIME OVERLAY that modulates the arb/
-margin assumptions already used in pages 1 (Cu), 2 (Li), and 4 (Zn) —
-not a new source of $/t route freight. Physical traders live and die on
-freight; this page shows the freight regime across vessel classes, maps
-each class to the commodities it actually moves, and freight-adjusts the
+margin assumptions already used in pages 1 (Cu) and 4 (Zn) — not a new
+source of $/t route freight. Physical traders live and die on freight;
+this page shows the freight regime across vessel classes, maps each
+class to the commodities it actually moves, and freight-adjusts the
 other pages' arb/margin sliders by a Baltic-derived scaler. See README.md
 for every formula and the full scope-limit writeup.
 
 SCOPE LIMIT (see also config.FREIGHT_DATA_CAVEATS and the in-app banner
 below): the Baltic series are unitless INDEX POINTS, not USD/t on any
 named route — there is no Cape C5 / Panamax route USD/t series in this
-dataset, and none is fabricated here. The one real dollar-freight series
-in this app is the Li CIF-FOB spread (`L4CNSPAU - LCBMAUSF`, S3/page 2),
-used to validate the Baltic proxy — never the reverse.
+dataset, and none is fabricated here. Freight enters the app two ways
+only: a regime signal (rolling percentile/z-score) and a unitless scaler
+applied to the USD/t freight sliders already sitting in pages 1 and 4.
 
 REVISION 2026-07-06 — building this page against the actual CSVs (not
 just the brief) turned up the same frequency surprise as every prior
 page (all six Baltic series + the exporter-FX pairs are verified MONTHLY,
 not "daily, gaps"), plus one more consequential finding: `BSI` (Supramax —
-the vessel map's PRIMARY conc/spodumene proxy) stops 2017-03 in this
-dataset, which is 9+ years before the one real freight-validation series
-(`L4CNSPAU - LCBMAUSF`) even starts (2023-09) — ZERO temporal overlap, so
-BSI cannot actually be validated here regardless of what the brief
-assumes. `BHSI` (Handysize, current through 2026-06, the map's secondary
-conc/spod proxy) is used as the practical default throughout; BSI stays
-selectable for domain/historical reference with an explicit warning. See
-config.py's REVISION note and `config.FREIGHT_DATA_CAVEATS`.
+the vessel map's PRIMARY conc proxy) stops 2017-03 in this dataset, 9+
+years stale. `BHSI` (Handysize, current through 2026-06, the map's
+secondary conc proxy) is used as the practical default throughout; BSI
+stays selectable for domain/historical reference with an explicit
+warning. See config.py's REVISION note and `config.FREIGHT_DATA_CAVEATS`.
 """
 
 from __future__ import annotations
@@ -45,7 +42,6 @@ st.set_page_config(page_title="Freight Overlay", layout="wide")
 VESSEL_TICKERS = ["BCI14", "BSI", "BHSI", "BIDY", "BITY"]
 ALL_TICKERS = [
     "BDIY", *VESSEL_TICKERS,
-    "L4CNSPAU", "LCBMAUSF",            # real $/t freight validation (from page 2)
     "CECNVXAQ", "LMCADY", "CECN0002",  # Cu import-margin leg reused for S4
     "AUDUSD", "USDZAR", "USDRUB", "USDTRY", "USDIDR", "EURUSD", "DXY", "USGGT10Y",  # S6 context
 ]
@@ -126,7 +122,7 @@ baseline_mode_label = st.sidebar.radio(
 )
 baseline_mode = "rolling" if baseline_mode_label.startswith("Rolling") else "fixed"
 
-st.sidebar.subheader("Conc/spodumene proxy vessel")
+st.sidebar.subheader("Concentrate proxy vessel")
 vessel_options = {
     "Handysize (BHSI): current data, the practical default": "BHSI",
     "Supramax (BSI): the textbook proxy, but dead since 2017": "BSI",
@@ -138,21 +134,12 @@ vessel_label = st.sidebar.selectbox(
     "Vessel class driving S2 shading and the S4 scaler default",
     options=list(vessel_options),
     index=0,
-    help="Supramax (BSI) is the textbook freight proxy for concentrates and spodumene "
-         "(Cu, Zn, Li), but it stopped reporting in March 2017, nine years before the real "
-         "freight validation series even begins. Handysize (BHSI) covers the same parcel "
+    help="Supramax (BSI) is the textbook freight proxy for base-metal concentrates (Cu, Zn), "
+         "but it stopped reporting in March 2017. Handysize (BHSI) covers the same parcel "
          "size and is still live, which is why it's the default here. BSI stays selectable "
          "if you want the historically correct answer over the current one.",
 )
 vessel_choice = vessel_options[vessel_label]
-
-st.sidebar.subheader("S3: proxy validation lead lag")
-max_lag = st.sidebar.slider(
-    "Max lag for CCF (months)", min_value=3, max_value=12, value=6, step=1,
-    help="The brief calls for a weekly lead lag, but every series feeding this section is "
-         "only verified monthly (see the caveats above), so cross correlation runs 0 to "
-         "this many months instead. Same document the deviation approach as pages 2 and 4.",
-)
 
 st.sidebar.subheader("S4: Cu freight-adjusted arb (mirrors page 1)")
 cu_vat_rebate = st.sidebar.slider(
@@ -171,14 +158,6 @@ cu_financing_rate = st.sidebar.slider(
 cu_financing_days = st.sidebar.slider(
     "Financing days", min_value=0, max_value=90, value=30, step=5,
     help="Mirrors page 1's default.",
-)
-
-st.sidebar.subheader("S4: Li freight leg (mirrors page 2)")
-li_freight_base = st.sidebar.slider(
-    "Assumed baseline Australia to China spodumene ocean freight (USD/t)", min_value=0, max_value=150, value=30, step=5,
-    help="A single assumed number, used only to build the Baltic scaled predicted freight "
-         "line you'll compare against the real observed CIF/FOB freight leg in S4. This "
-         "baseline is a guess. The CIF/FOB comparator next to it is observed data.",
 )
 
 
@@ -202,14 +181,6 @@ regimes: dict[str, pd.DataFrame] = {
     tk: ufin.freight_regime(s, window=regime_window) for tk, s in baltic_m.items()
 }
 
-implied_freight_real = None
-if require(converted, ["L4CNSPAU", "LCBMAUSF"], "S1/S3 (real implied freight)"):
-    cif_m = udata.resample_monthly(converted["L4CNSPAU"])
-    fob_m = udata.resample_monthly(converted["LCBMAUSF"])
-    fdf = pd.concat({"cif": cif_m, "fob": fob_m}, axis=1, sort=True).dropna()
-    if not fdf.empty:
-        implied_freight_real = (fdf["cif"] - fdf["fob"]).rename("implied_freight_real")
-
 vessel_series_m = baltic_m.get(vessel_choice)
 baseline_default_ref = None  # set once the date range is known, below
 
@@ -219,7 +190,7 @@ baseline_default_ref = None  # set once the date range is known, below
 st.title("Freight Overlay")
 st.caption(
     "Freight isn't just a cost line, it can flip an arb open or closed on its own. This page "
-    "reads the freight regime across Baltic vessel classes and feeds it back into the Cu, Li "
+    "reads the freight regime across Baltic vessel classes and feeds it back into the Cu "
     "and Zn pages as a signal and a slider scaler."
 )
 
@@ -228,9 +199,7 @@ st.warning(
     "not USD/t on any named route. Don't read them as freight rates. They enter this app two "
     "ways only: as a **regime signal** (rolling percentile and z score, still in index "
     "points, S1/S2), and as a unitless **scaler** applied to the USD/t freight sliders "
-    "already sitting in pages 1, 2 and 4 (S4). The only real dollar freight series anywhere "
-    "in this app is the Li CIF/FOB spread (`L4CNSPAU` minus `LCBMAUSF`, S3), and it exists to "
-    "validate the Baltic proxy, not to be replaced by it."
+    "already sitting in pages 1 and 4 (S4)."
 )
 
 if warnings:
@@ -241,8 +210,6 @@ if warnings:
 
 # global date range, bounded by whatever data we actually have
 all_dates = [s.dropna().index for s in baltic_m.values()]
-if implied_freight_real is not None:
-    all_dates.append(implied_freight_real.dropna().index)
 if all_dates:
     data_min = min(idx.min() for idx in all_dates)
     data_max = max(idx.max() for idx in all_dates)
@@ -285,8 +252,8 @@ scaler_m = (
     if vessel_series_m is not None and baseline is not None else None
 )
 
-# --- S1 KPI row 1: BDI composite + real implied freight ---------------------
-kpi1 = st.columns(4)
+# --- S1 KPI row 1: BDI composite + selected vessel proxy --------------------
+kpi1 = st.columns(3)
 bdi_val, bdi_delta = latest_metric(baltic_m.get("BDIY"), "{:,.0f} pts")
 kpi1[0].metric("Baltic Dry Index (BDIY, composite)", bdi_val, bdi_delta, delta_color="off")
 
@@ -306,9 +273,6 @@ if vessel_regime_df is not None and not vessel_regime_df["regime"].dropna().empt
                     delta_color="off")
 else:
     kpi1[2].metric(f"{VESSEL_SHORT.get(vessel_choice, vessel_choice)} regime", "n/a")
-
-li_val, li_delta = latest_metric(implied_freight_real, "${:,.0f}/t")
-kpi1[3].metric("Spod implied freight (real, CIF FOB, Australia to China)", li_val, li_delta, delta_color="off")
 
 # --- S1 KPI row 2: one regime read per vessel class -------------------------
 kpi2 = st.columns(5)
@@ -342,12 +306,12 @@ st.markdown(
 st.markdown(
     "**The vessel to commodity map is the real point of this page.** Capesize carries iron "
     "ore, coal and large dry bulk cargoes; it tracks macro bulk demand, not concentrates, so "
-    "treat it as context only. Supramax carries base metal concentrates (Cu, Zn), spodumene "
-    "and minor bulk, making it the primary proxy for pages 1, 2 and 4, even though it's stale "
-    "here. Handysize carries smaller concentrate and spodumene parcels plus minor bulk; it's "
-    "the secondary proxy on paper and the one you can actually trust today. Dirty tankers move "
-    "crude and clean tankers move refined products; both are context only, since nothing in "
-    "this app prices crude or products directly."
+    "treat it as context only. Supramax carries base metal concentrates (Cu, Zn) and minor "
+    "bulk, making it the primary proxy for pages 1 and 4, even though it's stale here. "
+    "Handysize carries smaller concentrate parcels plus minor bulk; it's the secondary proxy "
+    "on paper and the one you can actually trust today. Dirty tankers move crude and clean "
+    "tankers move refined products; both are context only, since nothing in this app prices "
+    "crude or products directly."
 )
 
 fig_regime = go.Figure()
@@ -384,7 +348,7 @@ st.divider()
 st.header("S3 -- Freight-adjusted arb sensitivity")
 st.markdown(
     f"`freight_scaler = {vessel_choice} / baseline` ({baseline_mode_label.lower()}), applied to "
-    "the existing freight sliders already in pages 1 and 2 through `utils.finance.freight_adjusted_cost`."
+    "the existing freight slider already in page 1 through `utils.finance.freight_adjusted_cost`."
 )
 
 st.subheader("Cu: import margin at base freight vs freight-scaled freight (mirrors page 1)")
@@ -433,14 +397,13 @@ else:
     st.caption("The Cu freight leg is unavailable (a ticker or the vessel scaler is missing), so this panel is skipped.")
 
 
-st.subheader("Al: freight matters less here (light touch)")
+st.subheader("Zn: not scaled here (no freight term to begin with)")
 st.info(
-    "Aluminium regional premia (`AMEUDDP` Rotterdam duty paid, `AUP1` US Midwest) are, per "
-    "page 3, dominated by carry economics: LME contango, financing, warehouse rent, plus duty "
-    "and Section 232 tariffs. `premium_fair_value()` has no ocean-freight term in it to scale "
-    "in the first place. Scaling the Al page the way Cu and Li are scaled above would dress up "
-    "a genuinely minor lever as a major one, so it's noted here rather than modeled, matching "
-    "the brief's explicit light touch scope for aluminium.",
+    "The Zn smelter margin (`smelter_margin()`, page 4) is a TC/treatment-charge business, not "
+    "a freight-exposed physical-arb business — there's no ocean-freight term in the formula to "
+    "scale in the first place. Noted here rather than modeled, same reasoning as the Cu leg's "
+    "freight sensitivity above but applied in reverse: not every margin formula has a freight "
+    "lever, and fabricating one here would misrepresent the underlying economics.",
 )
 
 st.divider()
@@ -454,14 +417,13 @@ st.markdown("The freight state of the whole physical complex at a glance, small 
 dash_specs = [
     ("BDIY", "Composite dry bulk, the overall regime signal", None),
     ("BCI14", "Iron ore, coal, large dry bulk (context only)", None),
-    ("BSI", "Cu/Zn concentrates and spodumene, the primary proxy (stale)", ["1_Copper_East_West", "2_Lithium_Conversion_Margin", "4_Zinc_Smelter_Margin"]),
-    ("BHSI", "Smaller concentrate and spodumene parcels, the practical default proxy", ["1_Copper_East_West", "2_Lithium_Conversion_Margin", "4_Zinc_Smelter_Margin"]),
+    ("BSI", "Cu/Zn concentrates, the primary proxy (stale)", ["1_Copper_East_West", "4_Zinc_Smelter_Margin"]),
+    ("BHSI", "Smaller concentrate parcels, the practical default proxy", ["1_Copper_East_West", "4_Zinc_Smelter_Margin"]),
     ("BIDY", "Crude (context only)", None),
     ("BITY", "Refined products (context only)", None),
 ]
 PAGE_LABELS = {
     "1_Copper_East_West": "Page 1: Copper East West",
-    "2_Lithium_Conversion_Margin": "Page 2: Lithium Conversion Margin",
     "4_Zinc_Smelter_Margin": "Page 4: Zinc Smelter Margin",
 }
 

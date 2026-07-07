@@ -11,8 +11,8 @@ both P&Ls off one TC series to show the vertical-integration story
 explicitly. See README.md for every formula and data caveat.
 
 REVISION 2026-07-05 — building this page against the actual CSVs (not just
-the brief) turned up the same kind of frequency surprise as page 2/3:
-`Z1CNHCOF`/`Z1CNTCIM`/`LMZSDS03`/`ZNCNMQKY`/`USDRUB`/`USDTRY` are all
+the brief) turned up the same kind of frequency surprise as every other
+page: `Z1CNHCOF`/`Z1CNTCIM`/`LMZSDS03`/`ZNCNMQKY`/`USDRUB`/`USDTRY` are all
 verified MONTHLY here, not "daily, gaps" as the brief assumed — and
 `Z1CNHCOF` genuinely prints negative TC in 2026-05/06 (real data, not a
 parsing artifact). See config.py's REVISION note and `config.ZINC_DATA_CAVEATS`.
