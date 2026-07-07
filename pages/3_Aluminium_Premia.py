@@ -265,7 +265,7 @@ else:
     kpi_cols[5].metric(f"Carry P&L ({carry_days}d)", "n/a")
 
 badge_color = {"CONTANGO-CARRY ATTRACTIVE": "🟢", "BACKWARDATION": "🔴", "NEUTRAL": "🟡", "UNKNOWN": "⚪"}[regime]
-kpi_cols[6].metric("Regime", f"{badge_color} {regime}")
+kpi_cols[6].metric("Regime", f"{regime}")
 
 st.divider()
 

@@ -232,28 +232,28 @@ def clip(s: pd.Series) -> pd.Series:
 
 
 # --- cross-source TC divergence guard --------------------------------------
-tc_candidates = ["Z1CNHCOF", "Z1CNTCIM"]
-latest_by_source = {}
-for tk in tc_candidates:
-    s = converted.get(tk, pd.Series(dtype=float)).dropna()
-    if not s.empty:
-        latest_by_source[tk] = s.iloc[-1]
-if len(latest_by_source) >= 2:
-    vals = list(latest_by_source.values())
-    denom = min(abs(v) for v in vals)
-    spread = max(vals) - min(vals)
-    if denom > 5 and abs(spread / denom) > 0.5:
-        detail = ", ".join(f"{k}=${v:,.1f}/dmt" for k, v in latest_by_source.items())
-        st.warning(
-            f"**Cross-source TC divergence**: latest prints diverge materially across sources "
-            f"({detail}) — likely panel/methodology differences, not necessarily a real basis "
-            f"move. Selected benchmark: **{tc_choice}**.",
-        )
-    elif denom <= 5:
-        st.caption(
-            f"Note: at least one TC source is near zero ({', '.join(f'{k}=${v:,.1f}/dmt' for k, v in latest_by_source.items())}) "
-            "— relative-spread comparison is unstable at this magnitude, skipped."
-        )
+# tc_candidates = ["Z1CNHCOF", "Z1CNTCIM"]
+# latest_by_source = {}
+# for tk in tc_candidates:
+#     s = converted.get(tk, pd.Series(dtype=float)).dropna()
+#     if not s.empty:
+#         latest_by_source[tk] = s.iloc[-1]
+# if len(latest_by_source) >= 2:
+#     vals = list(latest_by_source.values())
+#     denom = min(abs(v) for v in vals)
+#     spread = max(vals) - min(vals)
+#     if denom > 5 and abs(spread / denom) > 0.5:
+#         detail = ", ".join(f"{k}=${v:,.1f}/dmt" for k, v in latest_by_source.items())
+#         st.warning(
+#             f"**Cross-source TC divergence**: latest prints diverge materially across sources "
+#             f"({detail}) — likely panel/methodology differences, not necessarily a real basis "
+#             f"move. Selected benchmark: **{tc_choice}**.",
+#         )
+#     elif denom <= 5:
+#         st.caption(
+#             f"Note: at least one TC source is near zero ({', '.join(f'{k}=${v:,.1f}/dmt' for k, v in latest_by_source.items())}) "
+#             "— relative-spread comparison is unstable at this magnitude, skipped."
+#         )
 
 # --- core margin calc, needed by S1 KPI row, S2-S7 --------------------------
 margin_df = pd.DataFrame()
@@ -299,7 +299,7 @@ else:
     kpi_cols[3].metric("Indicative smelter margin", "n/a")
     regime = "UNKNOWN"
 badge_color = {"HEALTHY": "🟢", "UNDERWATER": "🔴", "BREAKEVEN": "🟡", "UNKNOWN": "⚪"}[regime]
-kpi_cols[4].metric("Regime", f"{badge_color} {regime}")
+kpi_cols[4].metric("Regime", f"{regime}")
 
 # --- optional freight-regime badge (page 5 back-integration) ---------------
 # Handysize (BHSI), not Supramax (BSI) — BSI is stale in this dataset (ends
@@ -309,7 +309,7 @@ freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted
 if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
     frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
     kpi_cols[5].metric(
-        "Freight regime (Handysize, ctx)", ufin.freight_regime_badge(frow["regime"]),
+        "Freight regime (Handysize, ctx)",
         f"{frow['pctile']:.0f}th pctile", delta_color="off",
         help="Baltic Handysize (BHSI) freight regime — context only, not used in the smelter-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
     )
@@ -351,13 +351,6 @@ if not margin_df.empty:
     )
     st.plotly_chart(fig_tc, width='stretch')
 
-    latest_tc = mdf["tc_per_dmt"].dropna()
-    if not latest_tc.empty and latest_tc.iloc[-1] <= 0:
-        st.error(
-            f"**Spot TC is at or below zero** (${latest_tc.iloc[-1]:,.1f}/dmt as of "
-            f"{latest_tc.index[-1].date()}) -> consistent with concentrate scarcity and "
-            "smelter-cut pressure ( -> S6)."
-        )
 
 st.divider()
 

@@ -241,7 +241,7 @@ freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted
 if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
     frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
     kpi_cols[5].metric(
-        "Freight regime (Handysize, ctx)", ufin.freight_regime_badge(frow["regime"]),
+        "Freight regime (Handysize, ctx)",
         f"{frow['pctile']:.0f}th pctile", delta_color="off",
         help="Baltic Handysize (BHSI) freight regime — context only, not used in the import-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
     )
