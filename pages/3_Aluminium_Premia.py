@@ -7,8 +7,8 @@ classic 2009-14 warehouse-queue cash-and-carry trade. See README.md for
 every formula and every data caveat found while wiring this page up.
 
 REVISION 2026-07-04 — building this page against the actual CSVs (not just
-the brief) turned up a few things worth recording, same spirit as page 1's
-CU1 correction: `AMEUDDP`/`USGGT10Y`/`DXY`/`EURUSD` are natively MONTHLY
+the brief) turned up a few things worth recording:
+`AMEUDDP`/`USGGT10Y`/`DXY`/`EURUSD` are natively MONTHLY
 here (not daily), and `IPAITI*` (IAI production) stops at 2014-12-31 (11+
 years stale). See config.py's REVISION note and `ALUMINIUM_DATA_CAVEATS`.
 """
@@ -36,8 +36,7 @@ IAI_REGIONAL = {
 
 
 # ---------------------------------------------------------------------------
-# small local helpers (presentation-only, kept out of utils/ — same pattern
-# as pages/1_Copper_East_West.py)
+# small local helpers (presentation-only, kept out of utils/ on purpose)
 # ---------------------------------------------------------------------------
 def require(converted: dict, keys: list[str], section: str) -> bool:
     missing = [k for k in keys if k not in converted or converted[k].dropna().empty]

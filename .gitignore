@@ -5,3 +5,5 @@ Instructions_ZINC.md
 Instructions_LITHIUM.md
 playground.ipynb
 INSTRUCTIONS/*
+__pycache__/
+*.pyc

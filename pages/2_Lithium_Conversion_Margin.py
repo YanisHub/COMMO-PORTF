@@ -29,8 +29,7 @@ from utils import finance as ufin
 st.set_page_config(page_title="Lithium Conversion Margin", layout="wide")
 
 ALL_TICKERS = [
-    "L4CNSPI", "SVPA", "LICNSPDU", "L4CNSPAU", "L4CNMJGO", "LCBMAUSF",
-    "AUDUSD", "BDIY", "BSI", "BHSI",  # BHSI: optional freight-regime badge (page 5 back-integration)
+    "L4CNSPI", "SVPA", "LICNSPDU", "L4CNSPAU", "L4CNMJGO", "LCBMAUSF", "AUDUSD",
 ]
 REFERENCE_GRADE = 6.0  # % Li2O — the grade every spod series here is benchmarked at
 
@@ -150,22 +149,6 @@ curtailment_n = st.sidebar.slider(
          "with margin < $0/t, not weeks.",
 )
 
-st.sidebar.subheader("S4 freight-leg overlay")
-FREIGHT_OVERLAY_OPTIONS = {
-    "None": None,
-    "BDIY — Baltic Dry Index": "BDIY",
-    "BSI — Baltic Supramax (STALE, ends 2017-03)": "BSI",
-}
-freight_overlay_label = st.sidebar.selectbox(
-    "Optional Baltic freight-index overlay",
-    options=list(FREIGHT_OVERLAY_OPTIONS),
-    index=0,
-    help="Neither series is used in any calc — purely a visual freight-rate backdrop for S4. "
-         "Degrades gracefully (a caption, not a crash) if the chosen series has no data in the "
-         "selected date range.",
-)
-freight_overlay_ticker = FREIGHT_OVERLAY_OPTIONS[freight_overlay_label]
-
 
 # ---------------------------------------------------------------------------
 # Load data
@@ -267,7 +250,7 @@ if require(converted, [spod_choice, "L4CNMJGO"], "S1/S2/S3/S6 (core margin calc)
         reference_grade=REFERENCE_GRADE,
     )
 
-kpi_cols = st.columns(6)
+kpi_cols = st.columns(5)
 carb_latest = converted.get("L4CNMJGO", pd.Series(dtype=float)).dropna()
 spod_latest = converted.get(spod_choice, pd.Series(dtype=float)).dropna()
 kpi_cols[0].metric(
@@ -295,21 +278,6 @@ else:
     regime = "UNKNOWN"
 badge_color = {"HEALTHY": "🟢", "UNDERWATER": "🔴", "BREAKEVEN": "🟡", "UNKNOWN": "⚪"}[regime]
 kpi_cols[4].metric("Regime", f"{regime}")
-
-# --- optional freight-regime badge (page 5 back-integration) ---------------
-# Handysize (BHSI), not Supramax (BSI) — BSI is stale in this dataset (ends
-# 2017-03); see config.FREIGHT_DATA_CAVEATS and page 5 for the full writeup.
-# Import-only, degrades to "n/a" if BHSI is missing — no calc above depends on it.
-freight_badge_df = ufin.freight_regime(converted["BHSI"]) if "BHSI" in converted and not converted["BHSI"].dropna().empty else None
-if freight_badge_df is not None and not freight_badge_df["regime"].dropna().empty:
-    frow = freight_badge_df.dropna(subset=["regime"]).iloc[-1]
-    kpi_cols[5].metric(
-        "Freight regime (Handysize, ctx)",
-        f"{frow['pctile']:.0f}th pctile", delta_color="off",
-        help="Baltic Handysize (BHSI) freight regime — context only, not used in the conversion-margin calc above. See page 5 (Freight Overlay) for the full cross-basin picture.",
-    )
-else:
-    kpi_cols[5].metric("Freight regime (Handysize, ctx)", "n/a")
 
 st.divider()
 
@@ -512,19 +480,6 @@ if require(converted, ["LCBMAUSF", "L4CNSPAU"], "S4"):
             x=anomalies.index, y=anomalies["implied_freight"], mode="markers",
             name="anomaly (neg/spike)", marker=dict(size=9, color="black", symbol="x"),
         ))
-
-    if freight_overlay_ticker and require(converted, [freight_overlay_ticker], f"S4 freight overlay ({freight_overlay_ticker})"):
-        if freight_overlay_ticker == "BSI":
-            st.warning("`BSI` is stale in this dataset (ends 2017-03) — shown for historical reference only; it will not appear if the chart window is more recent.", icon="⚠️")
-        overlay_s = clip(converted[freight_overlay_ticker])
-        if overlay_s.dropna().empty:
-            st.caption(f"{freight_overlay_ticker} has no observations in the selected date range — degraded gracefully, chart shown without it.")
-        else:
-            fig_freight.add_trace(go.Scatter(
-                x=overlay_s.index, y=overlay_s.values, name=f"{freight_overlay_ticker} (index, right axis)",
-                yaxis="y2", line=dict(color="#7f7f7f", dash="dot"),
-            ))
-            fig_freight.update_layout(yaxis2=dict(title=f"{freight_overlay_ticker} (index points)", overlaying="y", side="right"))
 
     fig_freight.update_layout(
         title="Implied AU->China freight leg (CIF − FOB, USD/t)",
