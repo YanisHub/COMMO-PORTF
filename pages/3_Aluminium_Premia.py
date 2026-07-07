@@ -157,9 +157,8 @@ st.info(
     "compared to FV directly (see S2/S3)."
 )
 st.info(
-    "**Frequency note**: `AMEUDDP` (Rotterdam) and `USGGT10Y` (financing proxy) are verified "
-    "**monthly** in this dataset (not daily) — forward-filled onto the daily LME grid "
-    "wherever they feed a calc, explicitly, not silently. Indicative and pre-tax throughout."
+    "**Frequency note**: `AMEUDDP` (Rotterdam) and `USGGT10Y` (financing proxy) are "
+    "**monthly** in this dataset -> forward-filled onto the daily LME grid "
 )
 
 if warnings:

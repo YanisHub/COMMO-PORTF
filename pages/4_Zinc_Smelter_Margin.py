@@ -155,13 +155,10 @@ conv_cost = st.sidebar.slider(
 st.sidebar.subheader("Spot vs benchmark proxy (S4)")
 bench_proxy_mode = st.sidebar.radio(
     "Benchmark proxy method",
-    options=["Rolling mean (trailing)", "Step-annual (Jan-held-flat)"],
+    options=["Step-annual (Jan-held-flat)", "Rolling mean (trailing)"],
     index=0,
-    help="There is no separately-negotiated annual-benchmark series in this dataset — both "
-         "options are PROXIES for it, built off the same spot series. 'Rolling mean' smooths "
-         "spot over a trailing window; 'Step-annual' holds each year's first observed print "
-         "flat through December, mimicking how real annual benchmarks are negotiated once and "
-         "held fixed.",
+    help="There is no separately-negotiated annual-benchmark series in this dataset -> they are PROXIES "
+         "built off the same spot series"
 )
 bench_window = st.sidebar.slider(
     "Rolling window (months)", min_value=3, max_value=24, value=12, step=1,
@@ -194,27 +191,21 @@ st.caption(
 
 st.info(
     "**TC is quoted per tonne of CONCENTRATE, not metal.** `TC_per_t_zinc = TC_per_dmt_conc / "
-    "(grade x recovery)` converts it — see 'Core economics' in README.md. Margin is "
-    "**indicative, pre-tax**: acid/by-product credit is an explicit sidebar SENSITIVITY (no "
-    "public acid-price series exists in this dataset), the annual benchmark is a spot-derived "
-    "PROXY (no separately-negotiated annual series exists either), and this page is a **China "
-    "custom-smelter angle only** — EU annual-benchmark smelters (Nyrstar/Korea Zinc) are out "
-    "of scope."
+    "(grade x recovery)` converts it. Margin is "
+    "**indicative, pre-tax**: acid/by-product credit is an explicit sidebar SENSITIVITY (couldn't find acid-price series)"
+    "), the annual benchmark is a spot-derived "
+    "PROXY (no separately-negotiated annual series exists either). **China "
+    "custom-smelter angle only** -> no EU Nyrstar/Korea Zinc"
 )
 st.info(
     "**Frequency note**: every zinc series on this page (`Z1CNHCOF`/`Z1CNTCIM`/`LMZSDS03`/"
-    "`ZNCNMQKY`/`USDRUB`/`USDTRY`) is verified **monthly** (month-end prints) in this dataset, "
-    "not daily — every calc, chart, and the S6 curtailment slider are in months, not weeks."
+    "`ZNCNMQKY`/`USDRUB`/`USDTRY`) is verified **monthly**"
 )
 
 if warnings:
     with st.expander(f"⚠ {len(warnings)} data warning(s)", expanded=True):
         for w in warnings:
             st.markdown(f"- {w}")
-
-with st.expander("Data caveats found while wiring up this page (see config.py REVISION note)"):
-    for tk, note in config.ZINC_DATA_CAVEATS.items():
-        st.markdown(f"- **{tk}**: {note}")
 
 # global date range, bounded by whatever data we actually have
 all_dates = [s.dropna().index for s in converted.values() if not s.dropna().empty]
@@ -224,7 +215,7 @@ if all_dates:
 else:
     data_min, data_max = pd.Timestamp("2015-01-01"), pd.Timestamp.today()
 
-default_years = 3
+default_years = 20
 default_start = max(data_min, data_max - pd.DateOffset(years=default_years))
 start_date, end_date = st.sidebar.slider(
     "Chart date range",
@@ -257,7 +248,6 @@ if len(latest_by_source) >= 2:
             f"**Cross-source TC divergence**: latest prints diverge materially across sources "
             f"({detail}) — likely panel/methodology differences, not necessarily a real basis "
             f"move. Selected benchmark: **{tc_choice}**.",
-            icon="⚠️",
         )
     elif denom <= 5:
         st.caption(
@@ -334,7 +324,7 @@ st.divider()
 st.header("S2 — TC cycle time series")
 st.markdown(
     f"Spot TC (**{tc_choice}**, USD/dmt concentrate) with LME zinc 3M overlaid on a right axis. "
-    "The 2021 highs (conc glut) into the 2024-26 collapse toward/below zero (extreme conc "
+    "The 2019-2020 highs (conc glut) into the 2024-26 collapse toward/below zero (extreme conc "
     "tightness -> smelter squeeze) is the whole page-4 thesis in one chart."
 )
 
@@ -346,11 +336,11 @@ if not margin_df.empty:
     fig_tc.add_hline(y=0, line_dash="dot", line_color="gray")
     fig_tc.add_trace(go.Scatter(x=mdf.index, y=mdf["lme_zinc"], name="LME zinc 3M (USD/t, right axis)", yaxis="y2", line=dict(color="#7f7f7f", dash="dot")))
     fig_tc.add_vrect(
-        x0="2021-01-01", x1="2021-12-31", fillcolor="LightGreen", opacity=0.15, line_width=0,
-        annotation_text="2021 TC highs (conc glut)", annotation_position="top left",
+        x0="2019-04-01", x1="2020-03-31", fillcolor="LightGreen", opacity=0.15, line_width=0,
+        annotation_text="2019-2020 TC highs (conc glut)", annotation_position="top left",
     )
     fig_tc.add_vrect(
-        x0="2023-06-01", x1="2024-12-31", fillcolor="Crimson", opacity=0.12, line_width=0,
+        x0="2023-02-01", x1="2024-12-31", fillcolor="Crimson", opacity=0.12, line_width=0,
         annotation_text="2024 TC collapse (conc tightness)", annotation_position="top left",
     )
     fig_tc.update_layout(
@@ -365,9 +355,8 @@ if not margin_df.empty:
     if not latest_tc.empty and latest_tc.iloc[-1] <= 0:
         st.error(
             f"**Spot TC is at or below zero** (${latest_tc.iloc[-1]:,.1f}/dmt as of "
-            f"{latest_tc.index[-1].date()}) — consistent with extreme concentrate scarcity and "
-            "smelter-cut pressure (see S6).",
-            icon="🚨",
+            f"{latest_tc.index[-1].date()}) -> consistent with concentrate scarcity and "
+            "smelter-cut pressure ( -> S6)."
         )
 
 st.divider()
@@ -398,37 +387,6 @@ if not margin_df.empty:
     )
     st.plotly_chart(fig_stack, width='stretch')
 
-    st.subheader("Waterfall — margin breakdown on a selected date")
-    wf_date_input = st.slider(
-        "Waterfall snapshot date",
-        min_value=start_date.to_pydatetime(), max_value=end_date.to_pydatetime(),
-        value=end_date.to_pydatetime(), format="YYYY-MM-DD",
-        key="s3_waterfall_date",
-    )
-    wf_ts = pd.Timestamp(wf_date_input)
-    mdf_valid = margin_df.dropna(subset=["tc_per_t_zinc", "free_metal", "margin"])
-    mdf_valid = mdf_valid.loc[(mdf_valid.index >= start_date) & (mdf_valid.index <= end_date)]
-    if not mdf_valid.empty:
-        nearest_idx = mdf_valid.index[mdf_valid.index <= wf_ts]
-        snap_date = nearest_idx[-1] if len(nearest_idx) else mdf_valid.index[0]
-        row = mdf_valid.loc[snap_date]
-        fig_wf = go.Figure(go.Waterfall(
-            orientation="v",
-            measure=["relative", "relative", "relative", "relative", "total"],
-            x=["TC per t zinc", "+ Free metal", "+ By-product credit", "- Conversion cost", "Net margin"],
-            y=[row["tc_per_t_zinc"], row["free_metal"], row["by_product_credit"], -row["conv_cost"], 0],
-            connector=dict(line=dict(color="gray")),
-        ))
-        fig_wf.update_layout(
-            title=f"Margin waterfall, snapshot {snap_date.date()} (USD/t zinc, {tc_choice} benchmark)",
-            yaxis_title="USD/t zinc",
-        )
-        st.plotly_chart(fig_wf, width='stretch')
-        st.caption(
-            f"Snapshot: TC/t-zinc ${row['tc_per_t_zinc']:,.0f} + free metal ${row['free_metal']:,.0f} "
-            f"+ by-product credit ${row['by_product_credit']:,.0f} - conv. cost ${row['conv_cost']:,.0f} "
-            f"= net ${row['margin']:,.0f}/t (nearest available month to {wf_date_input.date()}: {snap_date.date()})."
-        )
 
 st.divider()
 
@@ -439,12 +397,10 @@ st.header("S4 — Spot vs benchmark spread")
 st.markdown(
     "Smelters actually run a mix of an annually-negotiated benchmark TC plus opportunistic spot "
     "purchases. This dataset has no separately-negotiated annual series, so the benchmark here "
-    "is a **PROXY built off the same spot series** (selectable in the sidebar: trailing rolling "
+    "is a **PROXY built off the same spot series** (see sidebar: trailing rolling "
     "mean, or a step-annual 'January-held-flat' approximation). `spot_vs_bench = TC_spot - "
     "TC_bench_proxy`; negative = spot has fallen below the (smoothed) benchmark, signaling acute, "
-    "recent tightness the annual contract hasn't caught up to. **Caveat**: this proxy is not a "
-    "negotiated annual number, and the EU annual-benchmark system (Nyrstar/Korea Zinc) is "
-    "out-of-scope here — China custom-smelter angle only."
+    "recent tightness the annual contract hasn't caught up to."
 )
 
 if require(converted, [tc_choice], "S4"):
@@ -483,69 +439,66 @@ st.divider()
 # ---------------------------------------------------------------------------
 # S5 — Dual P&L: trader vs smelter
 # ---------------------------------------------------------------------------
-st.header("S5 — Dual P&L: trader vs smelter")
-st.markdown(
-    "Same TC series, opposite books. A concentrate **trader** buys conc from mines and earns "
-    "the TC selling it on to smelters — trader P&L *rises* with TC. A **smelter** pays away the "
-    "TC as its raw-material discount — smelter margin *falls* (is squeezed) when TC is low. "
-    "Glencore runs both books simultaneously (largest independent conc trader, and a smelter "
-    "operator via Asturiana/San Juan de Nieva, Portovesme, Nordenham, and Kazzinc) — so on a "
-    "net basis it captures margin somewhere along the chain almost regardless of which way TC "
-    "moves. Both indexed to 100 at the start of the selected window so the mirror-image shape "
-    "is visible despite the very different natural units (trader P&L per dmt conc vs smelter "
-    "margin per t zinc)."
-)
+# st.header("S5 — Dual P&L: Trader vs Smelter (The Integrated Hedge)")
+# st.markdown(
+#     "Same TC series, opposite books. A concentrate **trader** buys conc from mines at the benchmark and earns "
+#     "the spread selling it to smelters -> trader P&L *rises* when spot TC crashes. A **smelter** pays away the "
+#     "spot TC -> smelter margin *falls* when TC is low. "
+#     "A **fully integrated merchant** (e.g., Glencore) runs both books simultaneously. Because the trader's gains "
+#     "perfectly offset the smelter's losses, the Spot TC effectively cancels out, leaving a stable margin dictated by the Benchmark."
+# )
 
-if not margin_df.empty:
-    trader_pnl = mdf["tc_per_dmt"].rename("trader_pnl")
-    smelter_pnl = mdf["margin"].rename("smelter_margin")
-    dual = pd.concat([trader_pnl, smelter_pnl], axis=1).dropna()
-    if not dual.empty:
-        base_trader, base_smelter = dual["trader_pnl"].iloc[0], dual["smelter_margin"].iloc[0]
-        idx_trader = dual["trader_pnl"] - base_trader + 100 if base_trader == 0 else (dual["trader_pnl"] / abs(base_trader)) * 100
-        idx_smelter = dual["smelter_margin"] - base_smelter + 100 if base_smelter == 0 else (dual["smelter_margin"] / abs(base_smelter)) * 100
+# if not mdf.empty:
+#     # 1. TRADER: Benchmark minus Spot. (Must convert from USD/dmt to USD/t metal to match smelter!)
+#     # Assuming 'yield_factor' is defined earlier as (grade * recovery), e.g., 0.50 * 0.955 = 0.4775
+#     yield_factor = grade * recovery 
+#     trader_pnl = ((df4["bench"] - mdf["tc_per_dmt"]) / yield_factor).rename("trader_pnl")
+    
+#     # 2. SMELTER: Standard margin output (already in USD/t metal)
+#     smelter_pnl = mdf["margin"].rename("smelter_margin")
+    
+#     # 3. FULLY INTEGRATED: The sum of both books. 
+#     # Notice physically how the spot TC component cancels out in the background.
+#     fully_integrated = (trader_pnl + smelter_pnl).rename("fully_integrated")
 
-        fig_dual = go.Figure()
-        fig_dual.add_trace(go.Scatter(x=dual.index, y=idx_trader, name="Trader P&L (TC-driven, indexed)", line=dict(color="#1f77b4")))
-        fig_dual.add_trace(go.Scatter(x=dual.index, y=idx_smelter, name="Smelter margin (indexed)", line=dict(color="#d62728")))
-        fig_dual.add_hline(y=100, line_dash="dot", line_color="gray")
-        fig_dual.update_layout(
-            title="Trader P&L vs smelter margin, both indexed to 100 at window start (mirror image off one TC series)",
-            yaxis_title="index (100 = window start)", xaxis_title="date", hovermode="x unified",
-            legend=dict(orientation="h", y=1.08),
-        )
-        st.plotly_chart(fig_dual, width='stretch')
+#     dual = pd.concat([trader_pnl, smelter_pnl, fully_integrated], axis=1).dropna()
+    
+#     if not dual.empty:
+#         base_trader = dual["trader_pnl"].iloc[0]
+#         base_smelter = dual["smelter_margin"].iloc[0]
+#         base_integrated = dual["fully_integrated"].iloc[0]
+        
+#         # Safe indexing (handle division by zero)
+#         idx_trader = dual["trader_pnl"] - base_trader + 100 if base_trader == 0 else (dual["trader_pnl"] / abs(base_trader)) * 100
+#         idx_smelter = dual["smelter_margin"] - base_smelter + 100 if base_smelter == 0 else (dual["smelter_margin"] / abs(base_smelter)) * 100
+#         idx_integrated = dual["fully_integrated"] - base_integrated + 100 if base_integrated == 0 else (dual["fully_integrated"] / abs(base_integrated)) * 100
 
-        corr = dual["trader_pnl"].corr(dual["smelter_margin"])
-        st.metric(
-            "Correlation: trader P&L (raw TC) vs smelter margin",
-            f"{corr:+.2f} (n={len(dual)} months)",
-            help="Both are constructed from the same TC series with opposite signs on the TC "
-                 "term, so this correlation is close to +1 by construction — the point is "
-                 "illustrative (one input, two opposing books), not a novel empirical finding.",
-        )
-        st.caption(
-            "Note: this correlation is mechanically close to +1 because both series share the "
-            "same TC input with the same sign (smelter margin *rises* with TC too, before "
-            "conversion cost/credits) — TC is a cost to the smelter's raw-material bill that's "
-            "already netted in. The 'opposing books' framing is about **where in the value "
-            "chain** the TC dollar lands (trader margin vs smelter margin), not a negative "
-            "correlation between the two P&Ls."
-        )
+#         fig_dual = go.Figure()
+#         fig_dual.add_trace(go.Scatter(x=dual.index, y=idx_trader, name="Trader P&L (Indexed)", line=dict(color="#1f77b4")))
+#         fig_dual.add_trace(go.Scatter(x=dual.index, y=idx_smelter, name="Smelter Margin (Indexed)", line=dict(color="#d62728")))
+#         fig_dual.add_trace(go.Scatter(x=dual.index, y=idx_integrated, name="Fully Integrated (Indexed)", line=dict(color="#2ca02c", width=3, dash="dot")))
+#         fig_dual.add_hline(y=100, line_dash="dot", line_color="gray")
+        
+#         fig_dual.update_layout(
+#             title="The Integrated Hedge: Trader gains offset Smelter losses",
+#             yaxis_title="Index (100 = window start)", xaxis_title="Date", hovermode="x unified",
+#             legend=dict(orientation="h", y=1.08),
+#         )
+#         st.plotly_chart(fig_dual, width='stretch')
 
-st.divider()
+# st.divider()
 
 # ---------------------------------------------------------------------------
-# S6 — Curtailment signal
+# S5 — Curtailment signal
 # ---------------------------------------------------------------------------
-st.header("S6 — Curtailment signal")
+st.header("S5 — Curtailment signal")
 st.markdown(
-    f"`consecutive_below(margin, 0, N={curtailment_n})` — flags every month that is part of a "
+    f"`consecutive_below(margin, 0, N={curtailment_n})` -> flags month that is part of a "
     f"run of **{curtailment_n}+ consecutive months** with indicative margin below $0/t. "
-    "**Illustrative context only** (no tonnages fabricated or modeled): European smelters "
+    "**Illustrative context only**: European smelters "
     "(e.g. Nyrstar, Glencore's own Nordenham/Portovesme) idled capacity in 2022 on power costs, "
     "and Chinese smelters have both cut runs and taken maintenance outages in 2024 on low/"
-    "negative TC — cited as narrative context, not derived from this chart."
+    "negative TC."
 )
 
 if not margin_df.empty:
@@ -562,30 +515,19 @@ if not margin_df.empty:
         )
         st.plotly_chart(fig6, width='stretch')
 
-        latest_flag = curtailment_flag.dropna()
-        if not latest_flag.empty and bool(latest_flag.iloc[-1]):
-            st.error(
-                f"**Curtailment-risk regime ACTIVE** as of {latest_flag.index[-1].date()} — margin "
-                f"has been underwater for >= {curtailment_n} consecutive months under the selected assumptions.",
-                icon="🚨",
-            )
-        else:
-            st.caption("Not currently in a curtailment-risk regime under the selected threshold and assumptions.")
-
 st.divider()
 
 # ---------------------------------------------------------------------------
-# S7 — Sensitivity (acid credit)
+# S6 — Sensitivity (acid credit)
 # ---------------------------------------------------------------------------
-st.header("S7 — Sensitivity (acid credit)")
+st.header("S6 — Sensitivity (acid credit)")
 st.markdown(
-    "By-product credit (mostly sulphuric acid, plus minor Pb/Ag/Au) is the **single biggest "
-    "unmodeled lever** in this China-smelter P&L — there's no acid-price series in this dataset, "
-    "so it's a slider everywhere else on this page. Here it's stress-tested directly: a 2D "
+    "By-product credit (mostly sulphuric acid, plus minor Pb/Ag/Au) is the ** biggest "
+    "unmodeled lever** in this China-smelter P&L -> no acid-price -> free parameter here"
+    ". Below a 2D "
     "heatmap of indicative margin across a grid of **TC level x acid credit**, holding free "
     "metal and conversion cost at their current sidebar values. The point is to show that the "
-    "sign of the margin can flip purely on the acid assumption at a given TC level — the mark "
-    "of actually understanding this business, vs reciting the TC headline."
+    "sign of the margin can flip purely on the acid assumption at a given TC level"
 )
 
 if not margin_df.empty and not tc_latest.empty:
@@ -631,13 +573,11 @@ if not margin_df.empty and not tc_latest.empty:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# S8 — Zinc premium context (optional)
+# S7 — Zinc premium context (optional)
 # ---------------------------------------------------------------------------
-st.header("S8 — Zinc premium context (optional)")
+st.header("S7 — Zinc premium context (optional)")
 st.markdown(
-    "`ZNCNMQKY` (China zinc premium, B/L Shanghai CIF — verified a genuine USD/t physical "
-    "premium, NOT a CNY cathode price) vs LME zinc 3M: regional physical-tightness overlay. "
-    "**Not part of the TC/margin core above** — shown purely as context on whether Chinese "
+    "`ZNCNMQKY` (China zinc premium, B/L Shanghai CIF) vs LME zinc 3M: regional physical-tightness overlay: purely as context on whether Chinese "
     "physical demand is running hot alongside (or independent of) the conc-side TC squeeze."
 )
 
@@ -660,8 +600,3 @@ else:
     st.caption("ZNCNMQKY unavailable — S8 degraded gracefully, rest of the page unaffected.")
 
 st.divider()
-st.caption(
-    "Zinc Smelter Margin — page 4 of the Commodity Physical Desk Monitor. "
-    "See README.md for every formula, the TC-per-concentrate->per-metal derivation, and every "
-    "excluded/sensitivity assumption."
-)
